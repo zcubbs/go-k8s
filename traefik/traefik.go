@@ -37,14 +37,6 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		}
 	}
 
-	// prepare default certificate secret
-	if values.DefaultCertificateEnabled {
-		err := createDefaultCertificateSecret(&values, kubeconfig, debug)
-		if err != nil {
-			return fmt.Errorf("failed to create default certificate secret \n %w", err)
-		}
-	}
-
 	valuesPath := getTmpFilePath("values")
 
 	// create traefik values.yaml from template
@@ -88,6 +80,19 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return fmt.Errorf("failed to wait for traefik deployment to be ready \n %w", err)
 	}
 
+	// prepare default certificate secret
+	if values.DefaultCertificateEnabled {
+		err := createDefaultCertificateSecret(&values, kubeconfig, debug)
+		if err != nil {
+			return fmt.Errorf("failed to create default certificate secret \n %w", err)
+		}
+
+		// restart traefik
+		err = kubernetes.RestartPods(kubeconfig, traefikNamespace, []string{"traefik"}, debug)
+		if err != nil {
+			return fmt.Errorf("failed to restart traefik \n %w", err)
+		}
+	}
 	return nil
 }
 
@@ -206,6 +211,7 @@ type Values struct {
 	IngressProvider                    string
 	DnsProvider                        string
 	DnsResolver                        string
+	DnsResolverIPs                     string
 	DnsResolverEmail                   string
 	EnableDashboard                    bool
 	EnableAccessLog                    bool
@@ -291,6 +297,10 @@ additionalArguments:
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.storage=/data/acme.json"
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
   {{- end }}
+  {{- if .DnsResolverIPs }}
+  - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge.resolvers={{ .DnsResolverIPs }}"
+  - "--certificatesresolvers.{{ .DnsResolver }}.acme.dnschallenge.resolvers={{ .DnsResolverIPs }}"
+  {{- end }}
 ports:
   websecure:
     tls:
@@ -366,7 +376,6 @@ kind: Secret
 metadata:
   name: default-certificate
   namespace: {{ .Namespace }}
-
 type: Opaque
 data:
   tls.crt: {{ .Base64EncodedCertificate.Crt }}

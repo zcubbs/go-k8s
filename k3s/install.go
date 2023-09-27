@@ -6,6 +6,7 @@ package k3s
 
 import (
 	"fmt"
+	"github.com/zcubbs/go-k8s/kubernetes"
 	"github.com/zcubbs/x/bash"
 	osx "github.com/zcubbs/x/os"
 	"os"
@@ -23,6 +24,7 @@ type Config struct {
 	DefaultLocalStoragePath string
 	WriteKubeconfigMode     string
 	HttpsListenPort         string
+	ForwardDns              string
 }
 
 var configTmpl = `---
@@ -110,6 +112,14 @@ func Install(config Config, debug bool) error {
 			err)
 	}
 
+	// CoreDNS
+	if config.ForwardDns != "" {
+		err = kubernetes.ApplyManifest(forwardDnsTmpl, config, debug)
+		if err != nil {
+			return fmt.Errorf("failed to apply CoreDNS manifest \n %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -153,3 +163,18 @@ func Uninstall(debug bool) error {
 
 	return nil
 }
+
+var forwardDnsTmpl = `---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  custom.server: |
+    *:53 {
+      errors
+      health
+      forward . {{ .ForwardDns }}
+    }
+`
