@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/zcubbs/go-k8s/helm"
 	"github.com/zcubbs/go-k8s/kubernetes"
+	"github.com/zcubbs/x/secret"
 	"github.com/zcubbs/x/yaml"
 	"os"
 	"time"
@@ -36,7 +37,15 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		}
 	}
 
-	valuesPath := getTmpValuesFilePath()
+	// prepare default certificate secret
+	if values.DefaultCertificateEnabled {
+		err := createDefaultCertificateSecret(&values, kubeconfig, debug)
+		if err != nil {
+			return fmt.Errorf("failed to create default certificate secret \n %w", err)
+		}
+	}
+
+	valuesPath := getTmpFilePath("values")
 
 	// create traefik values.yaml from template
 	configFileContent, err := yaml.ApplyTmpl(traefikValuesTmpl, values, debug)
@@ -89,8 +98,74 @@ func Uninstall(kubeconfig string, debug bool) error {
 	}, kubeconfig, debug)
 }
 
-func getTmpValuesFilePath() string {
-	return os.TempDir() + "/values-" + time.Now().Format("20060102150405") + ".yaml"
+func createDefaultCertificateSecret(values *Values, kubeconfig string, debug bool) error {
+	// create namespace
+	err := kubernetes.CreateNamespace(
+		kubeconfig,
+		[]string{traefikNamespace},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create namespace %s \n %w", traefikNamespace, err)
+	}
+
+	cert, err := secret.Provide(values.DefaultCertificateCert)
+	if err != nil {
+		return fmt.Errorf("failed to provide default certificate crt \n %w", err)
+	}
+
+	key, err := secret.Provide(values.DefaultCertificateKey)
+	if err != nil {
+		return fmt.Errorf("failed to provide default certificate key \n %w", err)
+	}
+
+	values.DefaultCertificateCert = cert
+	values.DefaultCertificateKey = key
+
+	// apply template
+	if err := applyDefaultCertificateSecret(*values, kubeconfig, debug); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func applyDefaultCertificateSecret(values Values, _ string, debug bool) error {
+	err := kubernetes.ApplyManifest(
+		defaultTlsStoreTmpl,
+		struct {
+			Namespace string
+		}{
+			Namespace: traefikNamespace,
+		},
+		debug,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to apply default tls store \n %w", err)
+	}
+
+	// apply manifest
+	err = kubernetes.ApplyManifest(
+		defaultCertificateSecretTmpl,
+		DefaultCertificateValues{
+			Enabled: values.DefaultCertificateEnabled,
+			Base64EncodedCertificate: struct {
+				Crt string
+				Key string
+			}{
+				Crt: values.DefaultCertificateCert,
+				Key: values.DefaultCertificateKey,
+			},
+			Namespace: traefikNamespace,
+		}, debug)
+	if err != nil {
+		return fmt.Errorf("failed to apply default certificate secret \n %w", err)
+	}
+
+	return nil
+}
+
+func getTmpFilePath(name string) string {
+	return os.TempDir() + "/" + name + "-" + time.Now().Format("20060102150405") + ".yaml"
 }
 
 func validateValues(values *Values) error {
@@ -114,11 +189,11 @@ func validateValues(values *Values) error {
 		values.DnsTZ = traefikDnsTZ
 	}
 
-	if values.DefaultCertificate.Enabled {
-		if values.DefaultCertificate.Base64EncodedCertificate.Crt == "" {
+	if values.DefaultCertificateEnabled {
+		if values.DefaultCertificateCert == "" {
 			return fmt.Errorf("defaultCertificate.base64EncodedCertificate.crt is required")
 		}
-		if values.DefaultCertificate.Base64EncodedCertificate.Key == "" {
+		if values.DefaultCertificateKey == "" {
 			return fmt.Errorf("defaultCertificate.base64EncodedCertificate.key is required")
 		}
 	}
@@ -146,7 +221,9 @@ type Values struct {
 	ProxyProtocolTrustedIPs            string
 	DnsTZ                              string
 
-	DefaultCertificate DefaultCertificateValues
+	DefaultCertificateEnabled bool
+	DefaultCertificateCert    string
+	DefaultCertificateKey     string
 }
 
 var traefikValuesTmpl = `
@@ -269,7 +346,7 @@ type DefaultCertificateValues struct {
 	Namespace string
 }
 
-var defaultCertificateSecretTmpl = `
+var defaultTlsStoreTmpl = `
 apiVersion: traefik.io/v1alpha1
 kind: TLSStore
 metadata:
@@ -279,6 +356,9 @@ metadata:
 spec:
   defaultCertificate:
     secretName: default-certificate
+`
+
+var defaultCertificateSecretTmpl = `
 
 ---
 apiVersion: v1
