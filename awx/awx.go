@@ -10,15 +10,12 @@ import (
 
 const (
 	awxInstanceDefaultName  = "awx"
-	awxNamespace            = "awx"
+	awxNamespace            = "default"
 	awxOperatorRepoUrl      = "https://ansible.github.io/awx-operator/"
 	awxOperatorChartName    = "awx-operator"
 	awxOperatorChartVersion = ""
 
-	awxOperatorDeploymentName = "awx-operator"
-
-	awxServiceTypeClusterIP = "ClusterIP"
-	awxServiceTypeNodePort  = "NodePort"
+	awxOperatorDeploymentName = "awx-operator-controller-manager"
 )
 
 type Values struct {
@@ -26,9 +23,8 @@ type Values struct {
 	ChartVersion string
 	AdminUser    string
 	AdminPass    string
-	ServiceType  string
 	IsNodePort   bool
-	Namespace    string
+	NodePort     int
 }
 
 func Install(values Values, kubeconfig string, debug bool) error {
@@ -70,8 +66,10 @@ func Install(values Values, kubeconfig string, debug bool) error {
 	// apply awx instance
 	err = addInstance(instanceTmplValues{
 		Name:          values.InstanceName,
-		Namespace:     values.Namespace,
+		Namespace:     awxNamespace,
 		IsIpv6:        false,
+		IsNodePort:    values.IsNodePort,
+		NodePort:      values.NodePort,
 		AdminUser:     values.AdminUser,
 		AdminPassword: values.AdminPass,
 		NoLog:         true,
@@ -107,6 +105,8 @@ type instanceTmplValues struct {
 	Name          string
 	Namespace     string
 	IsIpv6        bool
+	IsNodePort    bool
+	NodePort      int
 	AdminUser     string
 	AdminPassword string
 	NoLog         bool
@@ -119,10 +119,17 @@ metadata:
   name: {{ .Name }}
   namespace: {{ .Namespace }}
 spec:
+  {{- if .IsIpv6 }}
+  ipv6_enabled: true
+  {{- end }}
+  {{- if .IsNodePort }}
+  service_type: NodePort
+  nodeport_port: {{ .NodePort }}
+  {{- else }}
   service_type: ClusterIP
+  {{- end }}
   ingress_type: none
-  ipv6_disabled: true
-  no_log: true
+  no_log: {{ .NoLog }}
   admin_user: {{ .AdminUser }}
 
 `
@@ -134,7 +141,7 @@ metadata:
   name: {{ .Name }}-admin-password
   namespace: {{ .Namespace }}
 stringData:
-  password: {{ .Password }}
+  password: {{ .AdminPassword }}
 
 `
 
@@ -142,14 +149,11 @@ func validateValues(values *Values) error {
 	if values.ChartVersion == "" {
 		values.ChartVersion = awxOperatorChartVersion
 	}
-	if values.ServiceType == "" {
-		values.ServiceType = awxServiceTypeClusterIP
+	if values.AdminUser == "" {
+		values.AdminUser = "admin"
 	}
-	if values.ServiceType != awxServiceTypeClusterIP && values.ServiceType != awxServiceTypeNodePort {
-		return fmt.Errorf("invalid service type %s, must be %s or %s", values.ServiceType, awxServiceTypeClusterIP, awxServiceTypeNodePort)
-	}
-	if values.ServiceType == awxServiceTypeNodePort {
-		values.IsNodePort = true
+	if values.IsNodePort && values.NodePort == 0 {
+		values.NodePort = 30080
 	}
 	if values.InstanceName == "" {
 		values.InstanceName = awxInstanceDefaultName

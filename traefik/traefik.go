@@ -114,6 +114,15 @@ func validateValues(values *Values) error {
 		values.DnsTZ = traefikDnsTZ
 	}
 
+	if values.DefaultCertificate.Enabled {
+		if values.DefaultCertificate.Base64EncodedCertificate.Crt == "" {
+			return fmt.Errorf("defaultCertificate.base64EncodedCertificate.crt is required")
+		}
+		if values.DefaultCertificate.Base64EncodedCertificate.Key == "" {
+			return fmt.Errorf("defaultCertificate.base64EncodedCertificate.key is required")
+		}
+	}
+
 	return nil
 }
 
@@ -136,6 +145,8 @@ type Values struct {
 	ProxyProtocolInsecure              bool
 	ProxyProtocolTrustedIPs            string
 	DnsTZ                              string
+
+	DefaultCertificate DefaultCertificateValues
 }
 
 var traefikValuesTmpl = `
@@ -246,4 +257,38 @@ envFrom:
   - secretRef:
       name: traefik-dns-provider-credentials
 {{- end }}
+`
+
+type DefaultCertificateValues struct {
+	Enabled                  bool
+	Base64EncodedCertificate struct {
+		Crt string
+		Key string
+	}
+
+	Namespace string
+}
+
+var defaultCertificateSecretTmpl = `
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: {{ .Namespace }}
+
+spec:
+  defaultCertificate:
+    secretName: default-certificate
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: default-certificate
+  namespace: {{ .Namespace }}
+
+type: Opaque
+data:
+  tls.crt: {{ .Base64EncodedCertificate.Crt }}
+  tls.key: {{ .Base64EncodedCertificate.Key }}
 `

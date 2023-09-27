@@ -15,9 +15,15 @@ func ApplyManifest(manifestTmpl string, data interface{}, debug bool) error {
 	}
 
 	// generate tmp file name
-	fn := fmt.Sprintf("/tmp/tmpManifest_%s.yaml",
+	tmpDir := os.TempDir()
+	fn := fmt.Sprintf("%s%stmpManifest_%s.yaml",
+		tmpDir,
+		string(os.PathSeparator),
 		time.Unix(time.Now().Unix(), 0).Format("20060102150405"),
 	)
+	if debug {
+		fmt.Printf("tmp manifest file: %s\n", fn)
+	}
 
 	// write tmp manifest
 	err = os.WriteFile(fn, b, 0644)
