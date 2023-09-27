@@ -112,6 +112,7 @@ type instanceTmplValues struct {
 	NoLog         bool
 }
 
+// #nosec G101
 var instanceTmpl = `
 apiVersion: awx.ansible.com/v1beta1
 kind: AWX
@@ -134,6 +135,7 @@ spec:
 
 `
 
+// #nosec G101
 var adminPasswordSecretTmpl = `
 apiVersion: v1
 kind: Secret
