@@ -17,7 +17,8 @@ type Repository struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 
-	Type string `json:"type"`
+	Type  string `json:"type"`
+	IsOci bool   `json:"isOci"`
 }
 
 func CreateRepository(repo Repository, _ string, debug bool) error {
@@ -51,6 +52,7 @@ func CreateRepository(repo Repository, _ string, debug bool) error {
 		Name:      repo.Name,
 		Namespace: argocdNamespace,
 		Type:      repo.Type,
+		IsOci:     repo.IsOci,
 		Url:       repo.Url,
 		Username:  username,
 		Password:  password,
@@ -68,6 +70,7 @@ type repoTmplValues struct {
 	Name      string
 	Namespace string
 	Type      string
+	IsOci     bool
 	Url       string
 	Username  string
 	Password  string
@@ -86,7 +89,7 @@ stringData:
   type: {{ .Type }}
   name: {{ .Name }}
 {{- if eq .Type "helm" }}
-  enableOCI: "true"
+  enableOCI: "{{ .IsOci }}"
 {{- end }}
   url: {{ .Url }}
   username: {{ .Username }}

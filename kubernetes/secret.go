@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/zcubbs/x/pretty"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
@@ -65,7 +66,7 @@ func CreateContainerRegistrySecret(
 		}
 
 		if debug {
-			fmt.Printf("Created secret %s\n", created.String())
+			pretty.PrintJson(created)
 		}
 	}
 

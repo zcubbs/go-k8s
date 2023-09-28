@@ -115,7 +115,7 @@ var argoAppOciTmpl = `---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .AppName }}
+  name: {{ .Name }}
   namespace: {{ .ArgoNamespace }}
 spec:
   project: {{ .Project }}
