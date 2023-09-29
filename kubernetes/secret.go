@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/zcubbs/x/pretty"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
@@ -56,17 +55,16 @@ func CreateContainerRegistrySecret(
 	}
 
 	for _, namespace := range namespaces {
-		created, err := cs.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
+		_, err := cs.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") && replace {
 				_, err := cs.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
-				return err
+				if err != nil {
+					return fmt.Errorf("failed to update secret: %v, namespace: %s", err, namespace)
+				}
+				return nil
 			}
 			return fmt.Errorf("failed to create secret: %v", err)
-		}
-
-		if debug {
-			pretty.PrintJson(created)
 		}
 	}
 
