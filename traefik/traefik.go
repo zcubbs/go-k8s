@@ -174,7 +174,7 @@ func getTmpFilePath(name string) string {
 }
 
 func validateValues(values *Values) error {
-	if values.IngressProvider != "" && values.DnsProvider != "" {
+	if values.IngressProvider != "" && values.DnsChallengeEnabled {
 		return fmt.Errorf("can't set both ingressProvider and dnsProvider")
 	}
 
@@ -209,6 +209,7 @@ func validateValues(values *Values) error {
 type Values struct {
 	AdditionalArguments                []string
 	IngressProvider                    string
+	DnsChallengeEnabled                bool
 	DnsProvider                        string
 	DnsResolver                        string
 	DnsResolverIPs                     string
@@ -283,7 +284,7 @@ additionalArguments:
   {{- if .IngressProvider }}
   - "{{ printf "%s=%s" "--providers.kubernetesIngress.ingressClass" .IngressProvider }}"
   {{- end }}
-  {{- if .DnsProvider }}
+  {{- if .DnsChallengeEnabled }}
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge=true"
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge.provider={{ .DnsProvider }}"
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge.delayBeforeCheck=10"
@@ -296,10 +297,11 @@ additionalArguments:
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.email={{ .DnsResolverEmail }}"
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.storage=/data/acme.json"
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
-  {{- end }}
-  {{- if .DnsResolverIPs }}
+
+    {{- if .DnsResolverIPs }}
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge.resolvers={{ .DnsResolverIPs }}"
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.dnschallenge.resolvers={{ .DnsResolverIPs }}"
+    {{- end }}
   {{- end }}
 ports:
   websecure:
@@ -339,7 +341,7 @@ deployment:
         - name: data
           mountPath: /data
 
-{{- if .DnsProvider }}
+{{- if .DnsChallengeEnabled }}
 envFrom:
   - secretRef:
       name: traefik-dns-provider-credentials
