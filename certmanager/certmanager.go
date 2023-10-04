@@ -233,17 +233,6 @@ podDnsConfig:
     {{- end }}
 `
 
-const dnsAzureClientSecretTmpl = `---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: azuredns-config
-  namespace: {{ .Namespace }}
-type: Opaque
-data:
-  client-secret: {{ .ClientSecret }}
-`
-
 const issuerTmpl = `---
 
 apiVersion: cert-manager.io/v1
