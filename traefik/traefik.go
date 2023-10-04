@@ -31,7 +31,7 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return err
 	}
 
-	if values.DnsProvider != "" {
+	if values.DnsChallengeEnabled {
 		if err := configureDNSChallengeVars(values, kubeconfig, debug); err != nil {
 			return err
 		}
@@ -178,8 +178,10 @@ func validateValues(values *Values) error {
 		return fmt.Errorf("can't set both ingressProvider and dnsProvider")
 	}
 
-	if values.DnsResolver == "" {
-		values.DnsResolver = traefikDnsResolver
+	if values.DnsChallengeEnabled {
+		if values.DnsResolver == "" {
+			values.DnsResolver = traefikDnsResolver
+		}
 	}
 
 	if values.EndpointsWeb == "" {
@@ -307,7 +309,9 @@ ports:
   websecure:
     tls:
       enabled: true
+      {{- if .DnsChallengeEnabled }}
       certResolver: {{ .DnsResolver }}
+      {{- end }}
 
 persistence:
   enabled: true
