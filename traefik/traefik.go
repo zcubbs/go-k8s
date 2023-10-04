@@ -299,11 +299,10 @@ additionalArguments:
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.email={{ .DnsResolverEmail }}"
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.storage=/data/acme.json"
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
-
-    {{- if .DnsResolverIPs }}
+  {{- if .DnsResolverIPs }}
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge.resolvers={{ .DnsResolverIPs }}"
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.dnschallenge.resolvers={{ .DnsResolverIPs }}"
-    {{- end }}
+  {{- end }}
   {{- end }}
 ports:
   websecure:
@@ -329,7 +328,7 @@ logs:
   {{- if .DebugLog }}
     level: DEBUG
   {{- else }}
-	level: INFO
+    level: INFO
   {{- end }}
   access:
     enabled: true
