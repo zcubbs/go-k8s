@@ -148,22 +148,24 @@ func applyDefaultCertificateSecret(values Values, _ string, debug bool) error {
 		return fmt.Errorf("failed to apply default tls store \n %w", err)
 	}
 
-	// apply manifest
-	err = kubernetes.ApplyManifest(
-		defaultCertificateSecretTmpl,
-		DefaultCertificateValues{
-			Enabled: values.DefaultCertificateEnabled,
-			Base64EncodedCertificate: struct {
-				Crt string
-				Key string
-			}{
-				Crt: values.DefaultCertificateCert,
-				Key: values.DefaultCertificateKey,
-			},
-			Namespace: traefikNamespace,
-		}, debug)
-	if err != nil {
-		return fmt.Errorf("failed to apply default certificate secret \n %w", err)
+	// Add Default Certificate Secret
+	if values.DefaultCertificateEnabled {
+		err = kubernetes.ApplyManifest(
+			defaultCertificateSecretTmpl,
+			DefaultCertificateValues{
+				Enabled: values.DefaultCertificateEnabled,
+				Base64EncodedCertificate: struct {
+					Crt string
+					Key string
+				}{
+					Crt: values.DefaultCertificateCert,
+					Key: values.DefaultCertificateKey,
+				},
+				Namespace: traefikNamespace,
+			}, debug)
+		if err != nil {
+			return fmt.Errorf("failed to apply default certificate secret \n %w", err)
+		}
 	}
 
 	return nil
@@ -283,9 +285,6 @@ additionalArguments:
   - "--entrypoints.websecure.proxyProtocol.trustedIPs=127.0.0.1/32,{{ .ProxyProtocolTrustedIPs }}"
   {{- end }}
   {{- end }}
-  {{- if .IngressProvider }}
-  - "{{ printf "%s=%s" "--providers.kubernetesIngress.ingressClass" .IngressProvider }}"
-  {{- end }}
   {{- if .DnsChallengeEnabled }}
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge=true"
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge.provider={{ .DnsProvider }}"
@@ -305,6 +304,8 @@ additionalArguments:
   {{- end }}
   {{- end }}
 ports:
+  web:
+    redirectTo: websecure
   websecure:
     tls:
       enabled: true
@@ -321,7 +322,7 @@ persistence:
 
 ingressRoute:
   dashboard:
-    enabled: true
+    enabled: {{ .EnableDashboard }}
 
 logs:
   general:
@@ -331,9 +332,16 @@ logs:
     level: INFO
   {{- end }}
   access:
-    enabled: true
+    enabled: {{ .EnableAccessLog }}
 pilot:
   enabled: false
+
+{{- if .IngressProvider }}
+providers:
+  kubernetesCRD:
+    enabled: true
+    ingressClass: {{ .IngressProvider }}
+{{- end }}
 
 deployment:
   initContainers:
