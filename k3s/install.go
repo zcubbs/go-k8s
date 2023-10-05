@@ -52,6 +52,10 @@ data-dir: {{ .DataDir }}
 {{- if .WriteKubeconfigMode }}
 write-kubeconfig-mode: {{ .WriteKubeconfigMode }}
 {{- end }}
+{{-if addResolvConf }}
+kubelet-arg:
+  - "resolv-conf=/etc/resolv.conf"
+{{- end }}
 `
 
 func Install(config Config, debug bool) error {

@@ -6,10 +6,12 @@ import (
 	"github.com/zcubbs/go-k8s/helm"
 	"github.com/zcubbs/go-k8s/kubernetes"
 	"github.com/zcubbs/x/pretty"
+	"github.com/zcubbs/x/secret"
 	"github.com/zcubbs/x/yaml"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -36,8 +38,8 @@ type Values struct {
 	HttpChallengeEnabled            bool
 	DnsChallengeEnabled             bool
 	DnsProvider                     string
-	DnsRecursiveNameserver          string
-	DnsRecursiveServerOnly          bool
+	DnsRecursiveNameservers         []string
+	DnsRecursiveNameserversOnly     bool
 	DnsAzureClientID                string
 	DnsAzureClientSecret            string
 	DnsAzureHostedZoneName          string
@@ -56,7 +58,18 @@ func Install(values Values, kubeconfig string, debug bool) error {
 	}
 
 	// create cert-manager values.yaml from template
-	configFileContent, err := yaml.ApplyTmpl(valuesFileTmpl, values, debug)
+	configFileContent, err := yaml.ApplyTmpl(
+		valuesFileTmpl,
+		ValuesFile{
+			InstallCRDs:                   true,
+			ReplicaCount:                  1,
+			DnsEnabled:                    values.DnsChallengeEnabled,
+			DnsRecursiveNameservers:       removePortFromHosts(values.DnsRecursiveNameservers),
+			DnsRecursiveNameserversMerged: getMergedRecursiveNameservers(values.DnsRecursiveNameservers),
+			DnsRecursiveNameserversOnly:   values.DnsRecursiveNameserversOnly,
+		},
+		debug,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to apply template \n %w", err)
 	}
@@ -101,6 +114,11 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return fmt.Errorf("failed to wait for cert-manager to be ready \n %w", err)
 	}
 
+	// parse secret values
+	if err := parseSecretValues(&values); err != nil {
+		return err
+	}
+
 	// apply letsencrypt issuers
 	if values.LetsencryptIssuerEnabled {
 
@@ -133,11 +151,20 @@ func Install(values Values, kubeconfig string, debug bool) error {
 
 		// staging
 		err = applyIssuer(Issuer{
-			IssuerName:           letsencryptStagingIssuerName,
-			IssuerEmail:          values.LetsencryptIssuerEmail,
-			IssuerServer:         letsencryptStagingServer,
-			IngressClassResolver: values.LetsEncryptIngressClassResolver,
-			Namespace:            certmanagerNamespace,
+			IssuerName:                letsencryptStagingIssuerName,
+			IssuerEmail:               values.LetsencryptIssuerEmail,
+			IssuerServer:              letsencryptStagingServer,
+			IngressClassResolver:      values.LetsEncryptIngressClassResolver,
+			Namespace:                 certmanagerNamespace,
+			HttpChallengeEnabled:      values.HttpChallengeEnabled,
+			DnsChallengeEnabled:       values.DnsChallengeEnabled,
+			DnsProvider:               values.DnsProvider,
+			DnsAzureClientID:          values.DnsAzureClientID,
+			DnsAzureClientSecret:      values.DnsAzureClientSecret,
+			DnsAzureHostedZoneName:    values.DnsAzureHostedZoneName,
+			DnsAzureResourceGroupName: values.DnsAzureResourceGroupName,
+			DnsAzureSubscriptionID:    values.DnsAzureSubscriptionID,
+			DnsAzureTenantID:          values.DnsAzureTenantID,
 		}, kubeconfig, debug)
 		if err != nil {
 			return fmt.Errorf("failed to apply letsencrypt staging issuer \n %w", err)
@@ -145,11 +172,20 @@ func Install(values Values, kubeconfig string, debug bool) error {
 
 		// production
 		err = applyIssuer(Issuer{
-			IssuerName:           letsencryptProductionIssuerName,
-			IssuerEmail:          values.LetsencryptIssuerEmail,
-			IssuerServer:         letsencryptProductionServer,
-			IngressClassResolver: values.LetsEncryptIngressClassResolver,
-			Namespace:            certmanagerNamespace,
+			IssuerName:                letsencryptProductionIssuerName,
+			IssuerEmail:               values.LetsencryptIssuerEmail,
+			IssuerServer:              letsencryptProductionServer,
+			IngressClassResolver:      values.LetsEncryptIngressClassResolver,
+			Namespace:                 certmanagerNamespace,
+			HttpChallengeEnabled:      values.HttpChallengeEnabled,
+			DnsChallengeEnabled:       values.DnsChallengeEnabled,
+			DnsProvider:               values.DnsProvider,
+			DnsAzureClientID:          values.DnsAzureClientID,
+			DnsAzureClientSecret:      values.DnsAzureClientSecret,
+			DnsAzureHostedZoneName:    values.DnsAzureHostedZoneName,
+			DnsAzureResourceGroupName: values.DnsAzureResourceGroupName,
+			DnsAzureSubscriptionID:    values.DnsAzureSubscriptionID,
+			DnsAzureTenantID:          values.DnsAzureTenantID,
 		}, kubeconfig, debug)
 		if err != nil {
 			return fmt.Errorf("failed to apply letsencrypt production issuer \n %w", err)
@@ -177,7 +213,7 @@ func validateValues(values *Values) error {
 		}
 
 		if values.LetsEncryptIngressClassResolver == "" {
-			values.LetsEncryptIngressClassResolver = defaultIngressClassResolver
+			return fmt.Errorf("letsencrypt ingress class resolver is required")
 		}
 	}
 
@@ -188,7 +224,64 @@ func getTmpFilePath(name string) string {
 	return os.TempDir() + "/" + name + "-" + time.Now().Format("20060102150405") + ".yaml"
 }
 
-func applyIssuer(issuer Issuer, kubeconfig string, debug bool) error {
+func parseSecretValues(values *Values) error {
+	if values.DnsProvider == "azure" {
+		// load env vars
+		azureClientId, err := secret.Provide(values.DnsAzureClientID)
+		if err != nil {
+			return fmt.Errorf("failed to provide azure client id \n %w", err)
+		}
+		azureClientSecret, err := secret.Provide(values.DnsAzureClientSecret)
+		if err != nil {
+			return fmt.Errorf("failed to provide azure client secret \n %w", err)
+		}
+		azureResourceGroup, err := secret.Provide(values.DnsAzureResourceGroupName)
+		if err != nil {
+			return fmt.Errorf("failed to provide azure resource group \n %w", err)
+		}
+		azureSubscriptionID, err := secret.Provide(values.DnsAzureSubscriptionID)
+		if err != nil {
+			return fmt.Errorf("failed to provide azure subscription id \n %w", err)
+		}
+		azureTenantID, err := secret.Provide(values.DnsAzureTenantID)
+		if err != nil {
+			return fmt.Errorf("failed to provide azure tenant id \n %w", err)
+		}
+
+		// validate env vars
+		if azureClientId == "" {
+			return fmt.Errorf("azure client id is required")
+		}
+
+		if azureClientSecret == "" {
+			return fmt.Errorf("azure client secret is required")
+		}
+
+		if azureResourceGroup == "" {
+			return fmt.Errorf("azure resource group is required")
+		}
+
+		if azureSubscriptionID == "" {
+			return fmt.Errorf("azure subscription id is required")
+		}
+
+		if azureTenantID == "" {
+			return fmt.Errorf("azure tenant id is required")
+		}
+
+		values.DnsAzureClientID = azureClientId
+		values.DnsAzureClientSecret = azureClientSecret
+		values.DnsAzureResourceGroupName = azureResourceGroup
+		values.DnsAzureSubscriptionID = azureSubscriptionID
+		values.DnsAzureTenantID = azureTenantID
+	} else {
+		return fmt.Errorf("dns provider %s is not supported", values.DnsProvider)
+	}
+
+	return nil
+}
+
+func applyIssuer(issuer Issuer, _ string, debug bool) error {
 	return kubernetes.ApplyManifest(
 		issuerTmpl,
 		issuer,
@@ -196,34 +289,71 @@ func applyIssuer(issuer Issuer, kubeconfig string, debug bool) error {
 	)
 }
 
+func removePortFromHosts(hosts []string) []string {
+	var newHosts []string
+	for _, host := range hosts {
+		newHosts = append(newHosts, removePortFromHost(host))
+	}
+	return newHosts
+}
+
+func removePortFromHost(host string) string {
+	parts := strings.Split(host, ":")
+	if len(parts) > 1 {
+		return parts[0]
+	}
+
+	return host
+}
+
+func getMergedRecursiveNameservers(nameservers []string) string {
+	var merged string
+	for i, ns := range nameservers {
+		if i == 0 {
+			merged = ns
+		} else {
+			merged = merged + "," + ns
+		}
+	}
+	return merged
+}
+
 type Issuer struct {
-	IssuerName           string
-	IssuerEmail          string
-	IssuerServer         string
-	IngressClassResolver string
-	Namespace            string
-	DnsChallengeEnabled  bool
-	HttpChallengeEnabled bool
+	IssuerName                string
+	IssuerEmail               string
+	IssuerServer              string
+	IngressClassResolver      string
+	Namespace                 string
+	HttpChallengeEnabled      bool
+	DnsChallengeEnabled       bool
+	DnsProvider               string
+	DnsAzureClientID          string
+	DnsAzureClientSecret      string
+	DnsAzureHostedZoneName    string
+	DnsAzureResourceGroupName string
+	DnsAzureSubscriptionID    string
+	DnsAzureTenantID          string
 }
 
 type ValuesFile struct {
-	InstallCRDs             bool
-	ReplicaCount            int
-	DnsEnabled              bool
-	DnsProvider             string
-	DnsRecursiveNameservers string
-	DnsRecursiveServerOnly  bool
+	InstallCRDs                   bool
+	ReplicaCount                  int
+	DnsEnabled                    bool
+	DnsRecursiveNameserversMerged string
+	DnsRecursiveNameservers       []string
+	DnsRecursiveNameserversOnly   bool
 }
 
 const valuesFileTmpl = `---
 installCRDs: true
 replicaCount: 1
+{{- if and .DnsEnabled .DnsRecursiveNameservers .DnsRecursiveNameserversOnly .DnsRecursiveNameserversMerged }}
 extraArgs:
-  {{- if .DnsEnabled }}
+  {{- if and .DnsRecursiveNameserversMerged }}
   - --dns01-recursive-nameservers={{ .DnsRecursiveNameserversMerged }}
   {{- end }}
-  {{- if .DnsRecursiveServerOnly }}
-  - --dns01-recursive-server-only
+  {{- if and .DnsRecursiveNameserversOnly }}
+  - --dns01-recursive-nameservers-only
   {{- end }}
 podDnsPolicy: None
 podDnsConfig:
@@ -231,6 +361,7 @@ podDnsConfig:
     {{- range $i, $arg := .DnsRecursiveNameservers }}
     - "{{ printf "%s" . }}"
     {{- end }}
+{{- end }}
 `
 
 const issuerTmpl = `---
@@ -249,18 +380,21 @@ spec:
     solvers:
       {{- if .DnsChallengeEnabled }}
       - dns01:
-          {{- if .DnsProvider }}:
-            {{- if eq .DnsProvider "azure" }}
-            azureDNS:
-              clientID: {{ .DnsAzureClientID }}
-              clientSecretSecretRef:
-                name: azuredns-config
-              environment: AzurePublicCloud
-              hostedZoneName: {{ .DnsAzureHostedZoneName }}
-              resourceGroupName: {{ .DnsAzureResourceGroupName }}
-              subscriptionID: {{ .DnsAzureSubscriptionID }}
-              tenantID: {{ .DnsAzureTenantID }}
-
+          {{- if eq .DnsProvider "azure" }}
+          azureDNS:
+            clientID: {{ .DnsAzureClientID }}
+            clientSecretSecretRef:
+              key: client-secret
+              name: azuredns-config
+            environment: AzurePublicCloud
+            hostedZoneName: {{ .DnsAzureHostedZoneName }}
+            resourceGroupName: {{ .DnsAzureResourceGroupName }}
+            subscriptionID: {{ .DnsAzureSubscriptionID }}
+            tenantID: {{ .DnsAzureTenantID }}
+        selector:
+          dnsZones:
+		    - {{ .DnsAzureHostedZoneName }}
+          {{- end }}
       {{- else if .HttpChallengeEnabled }}
       - http01:
           ingress:
