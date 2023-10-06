@@ -28,6 +28,7 @@ const (
 	letsencryptProductionIssuerName = "letsencrypt"
 	letsencryptStagingServer        = "https://acme-staging-v02.api.letsencrypt.org/directory"
 	letsencryptProductionServer     = "https://acme-v02.api.letsencrypt.org/directory"
+	kubeSystemNamespace             = "kube-system"
 )
 
 type Values struct {
@@ -155,7 +156,7 @@ func Install(values Values, kubeconfig string, debug bool) error {
 			IssuerEmail:               values.LetsencryptIssuerEmail,
 			IssuerServer:              letsencryptStagingServer,
 			IngressClassResolver:      values.LetsEncryptIngressClassResolver,
-			Namespace:                 certmanagerNamespace,
+			Namespace:                 kubeSystemNamespace,
 			HttpChallengeEnabled:      values.HttpChallengeEnabled,
 			DnsChallengeEnabled:       values.DnsChallengeEnabled,
 			DnsProvider:               values.DnsProvider,
@@ -176,7 +177,7 @@ func Install(values Values, kubeconfig string, debug bool) error {
 			IssuerEmail:               values.LetsencryptIssuerEmail,
 			IssuerServer:              letsencryptProductionServer,
 			IngressClassResolver:      values.LetsEncryptIngressClassResolver,
-			Namespace:                 certmanagerNamespace,
+			Namespace:                 kubeSystemNamespace,
 			HttpChallengeEnabled:      values.HttpChallengeEnabled,
 			DnsChallengeEnabled:       values.DnsChallengeEnabled,
 			DnsProvider:               values.DnsProvider,
@@ -225,57 +226,59 @@ func getTmpFilePath(name string) string {
 }
 
 func parseSecretValues(values *Values) error {
-	if values.DnsProvider == "azure" {
-		// load env vars
-		azureClientId, err := secret.Provide(values.DnsAzureClientID)
-		if err != nil {
-			return fmt.Errorf("failed to provide azure client id \n %w", err)
-		}
-		azureClientSecret, err := secret.Provide(values.DnsAzureClientSecret)
-		if err != nil {
-			return fmt.Errorf("failed to provide azure client secret \n %w", err)
-		}
-		azureResourceGroup, err := secret.Provide(values.DnsAzureResourceGroupName)
-		if err != nil {
-			return fmt.Errorf("failed to provide azure resource group \n %w", err)
-		}
-		azureSubscriptionID, err := secret.Provide(values.DnsAzureSubscriptionID)
-		if err != nil {
-			return fmt.Errorf("failed to provide azure subscription id \n %w", err)
-		}
-		azureTenantID, err := secret.Provide(values.DnsAzureTenantID)
-		if err != nil {
-			return fmt.Errorf("failed to provide azure tenant id \n %w", err)
-		}
+	if values.DnsChallengeEnabled {
+		if values.DnsProvider == "azure" {
+			// load env vars
+			azureClientId, err := secret.Provide(values.DnsAzureClientID)
+			if err != nil {
+				return fmt.Errorf("failed to provide azure client id \n %w", err)
+			}
+			azureClientSecret, err := secret.Provide(values.DnsAzureClientSecret)
+			if err != nil {
+				return fmt.Errorf("failed to provide azure client secret \n %w", err)
+			}
+			azureResourceGroup, err := secret.Provide(values.DnsAzureResourceGroupName)
+			if err != nil {
+				return fmt.Errorf("failed to provide azure resource group \n %w", err)
+			}
+			azureSubscriptionID, err := secret.Provide(values.DnsAzureSubscriptionID)
+			if err != nil {
+				return fmt.Errorf("failed to provide azure subscription id \n %w", err)
+			}
+			azureTenantID, err := secret.Provide(values.DnsAzureTenantID)
+			if err != nil {
+				return fmt.Errorf("failed to provide azure tenant id \n %w", err)
+			}
 
-		// validate env vars
-		if azureClientId == "" {
-			return fmt.Errorf("azure client id is required")
-		}
+			// validate env vars
+			if azureClientId == "" {
+				return fmt.Errorf("azure client id is required")
+			}
 
-		if azureClientSecret == "" {
-			return fmt.Errorf("azure client secret is required")
-		}
+			if azureClientSecret == "" {
+				return fmt.Errorf("azure client secret is required")
+			}
 
-		if azureResourceGroup == "" {
-			return fmt.Errorf("azure resource group is required")
-		}
+			if azureResourceGroup == "" {
+				return fmt.Errorf("azure resource group is required")
+			}
 
-		if azureSubscriptionID == "" {
-			return fmt.Errorf("azure subscription id is required")
-		}
+			if azureSubscriptionID == "" {
+				return fmt.Errorf("azure subscription id is required")
+			}
 
-		if azureTenantID == "" {
-			return fmt.Errorf("azure tenant id is required")
-		}
+			if azureTenantID == "" {
+				return fmt.Errorf("azure tenant id is required")
+			}
 
-		values.DnsAzureClientID = azureClientId
-		values.DnsAzureClientSecret = azureClientSecret
-		values.DnsAzureResourceGroupName = azureResourceGroup
-		values.DnsAzureSubscriptionID = azureSubscriptionID
-		values.DnsAzureTenantID = azureTenantID
-	} else {
-		return fmt.Errorf("dns provider %s is not supported", values.DnsProvider)
+			values.DnsAzureClientID = azureClientId
+			values.DnsAzureClientSecret = azureClientSecret
+			values.DnsAzureResourceGroupName = azureResourceGroup
+			values.DnsAzureSubscriptionID = azureSubscriptionID
+			values.DnsAzureTenantID = azureTenantID
+		} else {
+			return fmt.Errorf("dns provider %s is not supported", values.DnsProvider)
+		}
 	}
 
 	return nil
@@ -342,11 +345,14 @@ type ValuesFile struct {
 	DnsRecursiveNameserversMerged string
 	DnsRecursiveNameservers       []string
 	DnsRecursiveNameserversOnly   bool
+	PrometheusEnabled             bool
 }
 
 const valuesFileTmpl = `---
 installCRDs: true
 replicaCount: 1
+prometheus:
+  enabled: {{ .PrometheusEnabled }}
 {{- if and .DnsEnabled .DnsRecursiveNameservers .DnsRecursiveNameserversOnly .DnsRecursiveNameserversMerged }}
 extraArgs:
   {{- if and .DnsRecursiveNameserversMerged }}

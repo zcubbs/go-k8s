@@ -2,6 +2,7 @@ package traefik
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"github.com/zcubbs/go-k8s/helm"
 	"github.com/zcubbs/go-k8s/kubernetes"
@@ -135,6 +136,7 @@ func createDefaultCertificateSecret(values *Values, kubeconfig string, debug boo
 }
 
 func applyDefaultCertificateSecret(values Values, _ string, debug bool) error {
+	// apply default TLS store
 	err := kubernetes.ApplyManifest(
 		defaultTlsStoreTmpl,
 		struct {
@@ -148,6 +150,35 @@ func applyDefaultCertificateSecret(values Values, _ string, debug bool) error {
 		return fmt.Errorf("failed to apply default tls store \n %w", err)
 	}
 
+	// apply default TLS option
+	err = kubernetes.ApplyManifest(
+		defaultTlsOptionTmpl,
+		struct {
+			Namespace    string
+			TlsStrictSNI bool
+		}{
+			Namespace:    traefikNamespace,
+			TlsStrictSNI: values.TlsStrictSNI,
+		},
+		debug,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to apply default tls option \n %w", err)
+	}
+
+	// read cert and key from paths
+	cert, err := readFileContent(values.DefaultCertificateCert)
+	if err != nil {
+		return fmt.Errorf("failed to read default certificate crt \n %w", err)
+	}
+	key, err := readFileContent(values.DefaultCertificateKey)
+	if err != nil {
+		return fmt.Errorf("failed to read default certificate key \n %w", err)
+	}
+
+	cert = base64.StdEncoding.EncodeToString([]byte(cert))
+	key = base64.StdEncoding.EncodeToString([]byte(key))
+
 	// Add Default Certificate Secret
 	if values.DefaultCertificateEnabled {
 		err = kubernetes.ApplyManifest(
@@ -158,8 +189,8 @@ func applyDefaultCertificateSecret(values Values, _ string, debug bool) error {
 					Crt string
 					Key string
 				}{
-					Crt: values.DefaultCertificateCert,
-					Key: values.DefaultCertificateKey,
+					Crt: cert,
+					Key: key,
 				},
 				Namespace: traefikNamespace,
 			}, debug)
@@ -169,6 +200,14 @@ func applyDefaultCertificateSecret(values Values, _ string, debug bool) error {
 	}
 
 	return nil
+}
+
+func readFileContent(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func getTmpFilePath(name string) string {
@@ -213,6 +252,7 @@ func validateValues(values *Values) error {
 type Values struct {
 	AdditionalArguments                []string
 	IngressProvider                    string
+	TlsStrictSNI                       bool
 	DnsChallengeEnabled                bool
 	DnsProvider                        string
 	DnsResolver                        string
@@ -270,6 +310,7 @@ additionalArguments:
   {{- end }}
   {{- if .ForwardedHeaders }}
   {{- if .ForwardedHeadersInsecure }}
+  - "--entrypoints.web.forwardedHeaders.insecure"
   - "--entrypoints.websecure.forwardedHeaders.insecure"
   {{- end }}
   {{- if .ForwardedHeadersTrustedIPs }}
@@ -338,6 +379,9 @@ pilot:
 
 {{- if .IngressProvider }}
 providers:
+  kubernetesIngress:
+    enabled: true
+    ingressClass: {{ .IngressProvider }}
   kubernetesCRD:
     enabled: true
     ingressClass: {{ .IngressProvider }}
@@ -379,6 +423,20 @@ metadata:
 spec:
   defaultCertificate:
     secretName: default-certificate
+`
+
+var defaultTlsOptionTmpl = `
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: default
+  namespace: {{ .Namespace }}
+
+spec:
+  minVersion: VersionTLS13
+  sniStrict: {{ .TlsStrictSNI }}
+  cipherSuites:
+    - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 `
 
 var defaultCertificateSecretTmpl = `
