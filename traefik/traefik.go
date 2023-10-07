@@ -151,19 +151,21 @@ func applyDefaultCertificateSecret(values Values, _ string, debug bool) error {
 	}
 
 	// apply default TLS option
-	err = kubernetes.ApplyManifest(
-		defaultTlsOptionTmpl,
-		struct {
-			Namespace    string
-			TlsStrictSNI bool
-		}{
-			Namespace:    traefikNamespace,
-			TlsStrictSNI: values.TlsStrictSNI,
-		},
-		debug,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to apply default tls option \n %w", err)
+	if values.DefaultCertificateTlsOptionEnabled {
+		err = kubernetes.ApplyManifest(
+			defaultTlsOptionTmpl,
+			struct {
+				Namespace    string
+				TlsStrictSNI bool
+			}{
+				Namespace:    traefikNamespace,
+				TlsStrictSNI: values.TlsStrictSNI,
+			},
+			debug,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to apply default tls option \n %w", err)
+		}
 	}
 
 	// read cert and key from paths
@@ -272,9 +274,10 @@ type Values struct {
 	ProxyProtocolTrustedIPs            string
 	DnsTZ                              string
 
-	DefaultCertificateEnabled bool
-	DefaultCertificateCert    string
-	DefaultCertificateKey     string
+	DefaultCertificateEnabled          bool
+	DefaultCertificateTlsOptionEnabled bool
+	DefaultCertificateCert             string
+	DefaultCertificateKey              string
 }
 
 var traefikValuesTmpl = `
@@ -433,10 +436,15 @@ metadata:
   namespace: {{ .Namespace }}
 
 spec:
-  minVersion: VersionTLS13
+  minVersion: VersionTLS12
   sniStrict: {{ .TlsStrictSNI }}
   cipherSuites:
-    - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+	- TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+	- TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+	- TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+	- TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	- TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
 `
 
 var defaultCertificateSecretTmpl = `
