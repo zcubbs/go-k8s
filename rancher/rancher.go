@@ -1,10 +1,13 @@
 package rancher
 
 import (
+	"context"
 	"fmt"
 	"github.com/zcubbs/go-k8s/helm"
+	"github.com/zcubbs/go-k8s/kubernetes"
 	"github.com/zcubbs/x/yaml"
 	"os"
+	"time"
 )
 
 const (
@@ -49,19 +52,40 @@ func Install(values *Values, kubeconfig string, debug bool) error {
 	helmClient.Settings.SetNamespace(defaultNamespace)
 	helmClient.Settings.Debug = debug
 
-	err = helmClient.RepoAdd(helmRepoName, helmRepoURL)
+	err = helmClient.RepoAddAndUpdate(helmRepoName, helmRepoURL)
 	if err != nil {
 		return fmt.Errorf("failed to add helm repo: %w", err)
 	}
 
-	err = helmClient.RepoUpdate()
-	if err != nil {
-		return fmt.Errorf("failed to update helm repo: %w", err)
-	}
-
-	err = helmClient.InstallChart(defaultChartName, helmRepoName, defaultChartName, nil)
+	err = helmClient.InstallChart(helm.Chart{
+		ChartName:       defaultChartName,
+		ReleaseName:     defaultChartName,
+		RepoName:        helmRepoName,
+		Values:          nil,
+		ValuesFiles:     []string{valuesFilePath},
+		Debug:           debug,
+		CreateNamespace: true,
+		Upgrade:         true,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to install helm chart: %w", err)
+	}
+
+	// wait for rancher server to be ready
+	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	err = kubernetes.IsDeploymentReady(
+		ctxWithTimeout,
+		kubeconfig,
+		defaultNamespace,
+		[]string{
+			"rancher",
+		},
+		debug,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to wait for rancher server to be ready \n %w", err)
 	}
 
 	return nil
@@ -80,9 +104,7 @@ func validateValues(values *Values) error {
 
 const valuesTmpl = `
 ---
-# Default values for rancher.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+
 replicas: 1
 hostname: {{ .Hostname }}
 ingress:

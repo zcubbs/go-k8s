@@ -25,3 +25,21 @@ func GetAllReleases(kubeconfig string) ([]*release.Release, error) {
 
 	return _releases, nil
 }
+
+func (c *Client) releaseExists(releaseName string, actionConfig *action.Configuration) bool {
+	list := action.NewList(actionConfig)
+	list.All = true           // List all releases
+	list.AllNamespaces = true // Look in all namespaces
+	releases, err := list.Run()
+	if err != nil {
+		return false
+	}
+
+	for _, rel := range releases {
+		if rel.Name == releaseName {
+			return true
+		}
+	}
+
+	return false
+}

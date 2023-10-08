@@ -59,19 +59,22 @@ func Install(values Values, kubeconfig string, debug bool) error {
 	helmClient.Settings.Debug = debug
 
 	// add traefik helm repo
-	err = helmClient.RepoAdd(traefikHelmRepoName, traefikHelmRepoUrl)
+	err = helmClient.RepoAddAndUpdate(traefikHelmRepoName, traefikHelmRepoUrl)
 	if err != nil {
 		return fmt.Errorf("failed to add helm repo: %w", err)
 	}
 
-	// update helm repo
-	err = helmClient.RepoUpdate()
-	if err != nil {
-		return fmt.Errorf("failed to update helm repo: %w", err)
-	}
-
 	// install traefik
-	err = helmClient.InstallChart(traefikChartName, traefikHelmRepoName, traefikChartName, nil)
+	err = helmClient.InstallChart(helm.Chart{
+		ChartName:       traefikChartName,
+		ReleaseName:     traefikChartName,
+		RepoName:        traefikHelmRepoName,
+		Values:          nil,
+		ValuesFiles:     []string{valuesPath},
+		Debug:           debug,
+		CreateNamespace: true,
+		Upgrade:         true,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to install traefik \n %w", err)
 	}

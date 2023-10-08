@@ -88,12 +88,21 @@ func Install(values Values, kubeconfig string, debug bool) error {
 	helmClient.Settings.SetNamespace(certmanagerNamespace)
 
 	// add repo
-	err = helmClient.RepoAdd(certmanagerHelmRepoName, certmanagerHelmRepoURL)
+	err = helmClient.RepoAddAndUpdate(certmanagerHelmRepoName, certmanagerHelmRepoURL)
 	if err != nil {
 		return fmt.Errorf("failed to add cert-manager helm repo \n %w", err)
 	}
 
-	err = helmClient.InstallChart(certmanagerChartName, certmanagerHelmRepoName, certmanagerHelmRepoURL, nil)
+	err = helmClient.InstallChart(helm.Chart{
+		ChartName:       certmanagerChartName,
+		ReleaseName:     certmanagerChartName,
+		RepoName:        certmanagerHelmRepoName,
+		Values:          nil,
+		ValuesFiles:     []string{valuesPath},
+		Debug:           debug,
+		CreateNamespace: true,
+		Upgrade:         true,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to install cert-manager \n %w", err)
 	}

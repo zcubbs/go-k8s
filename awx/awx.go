@@ -38,19 +38,22 @@ func Install(values Values, kubeconfig string, debug bool) error {
 	helmClient.Settings.Debug = debug
 
 	// add awx-operator helm repo
-	err := helmClient.RepoAdd(awxOperatorChartName, awxOperatorRepoUrl)
+	err := helmClient.RepoAddAndUpdate(awxOperatorChartName, awxOperatorRepoUrl)
 	if err != nil {
 		return fmt.Errorf("failed to add helm repo: %w", err)
 	}
 
-	// update helm repo
-	err = helmClient.RepoUpdate()
-	if err != nil {
-		return fmt.Errorf("failed to update helm repo: %w", err)
-	}
-
 	// install awx-operator
-	err = helmClient.InstallChart(awxOperatorChartName, awxOperatorChartName, awxOperatorChartName, nil)
+	err = helmClient.InstallChart(helm.Chart{
+		ChartName:       awxOperatorChartName,
+		ReleaseName:     awxOperatorChartName,
+		RepoName:        awxOperatorChartName,
+		Values:          nil,
+		ValuesFiles:     nil,
+		Debug:           debug,
+		CreateNamespace: true,
+		Upgrade:         true,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to install awx-operator \n %w", err)
 	}

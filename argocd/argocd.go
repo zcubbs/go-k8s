@@ -44,19 +44,22 @@ func Install(values Values, kubeconfig string, debug bool) error {
 	helmClient.Settings.Debug = debug
 
 	// add argocd helm repo
-	err := helmClient.RepoAdd(argocdHelmRepoName, argocdHelmRepoURL)
+	err := helmClient.RepoAddAndUpdate(argocdHelmRepoName, argocdHelmRepoURL)
 	if err != nil {
 		return fmt.Errorf("failed to add helm repo: %w", err)
 	}
 
-	// update helm repo
-	err = helmClient.RepoUpdate()
-	if err != nil {
-		return fmt.Errorf("failed to update helm repo: %w", err)
-	}
-
 	// install argocd
-	err = helmClient.InstallChart(argocdChartName, argocdHelmRepoName, values.ChartVersion, vals)
+	err = helmClient.InstallChart(helm.Chart{
+		ChartName:       argocdChartName,
+		ReleaseName:     argocdChartName,
+		RepoName:        argocdHelmRepoName,
+		Values:          vals,
+		ValuesFiles:     nil,
+		Debug:           debug,
+		CreateNamespace: true,
+		Upgrade:         false,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to install argocd \n %w", err)
 	}
