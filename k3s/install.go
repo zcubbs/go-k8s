@@ -16,8 +16,6 @@ const InstallScript = "/tmp/k3s-install.sh"
 const UninstallScript = "/usr/local/bin/k3s-uninstall.sh"
 const ConfigFileLocation = "/etc/rancher/k3s"
 
-const withVersion = " INSTALL_K3S_VERSION=%s"
-
 type Config struct {
 	Version                 string
 	Disable                 []string
