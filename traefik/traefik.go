@@ -52,19 +52,28 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return fmt.Errorf("failed to write traefik values.yaml \n %w", err)
 	}
 
-	err = helm.Install(helm.Chart{
-		Name:            traefikChartName,
-		Repo:            traefikHelmRepoName,
-		URL:             traefikHelmRepoUrl,
-		Version:         traefikChartVersion,
-		Values:          nil,
-		ValuesFiles:     []string{valuesPath},
-		Namespace:       traefikNamespace,
-		Upgrade:         true,
-		CreateNamespace: true,
-	}, kubeconfig, debug)
+	// helm install traefik
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.SetNamespace(traefikNamespace)
+	helmClient.Settings.Debug = debug
+
+	// add traefik helm repo
+	err = helmClient.RepoAdd(traefikHelmRepoName, traefikHelmRepoUrl)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to add helm repo: %w", err)
+	}
+
+	// update helm repo
+	err = helmClient.RepoUpdate()
+	if err != nil {
+		return fmt.Errorf("failed to update helm repo: %w", err)
+	}
+
+	// install traefik
+	err = helmClient.InstallChart(traefikChartName, traefikHelmRepoName, traefikChartName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to install traefik \n %w", err)
 	}
 
 	// wait for traefik deployment to be ready
@@ -98,10 +107,13 @@ func Install(values Values, kubeconfig string, debug bool) error {
 }
 
 func Uninstall(kubeconfig string, debug bool) error {
-	return helm.Uninstall(helm.Chart{
-		Name:      traefikChartName,
-		Namespace: traefikNamespace,
-	}, kubeconfig, debug)
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.SetNamespace(traefikNamespace)
+	helmClient.Settings.Debug = debug
+
+	// delete traefik
+	return helmClient.UninstallChart(traefikChartName)
 }
 
 func createDefaultCertificateSecret(values *Values, kubeconfig string, debug bool) error {

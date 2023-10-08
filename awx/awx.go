@@ -32,17 +32,25 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return err
 	}
 
-	err := helm.Install(helm.Chart{
-		Name:            awxOperatorChartName,
-		Repo:            awxOperatorChartName,
-		URL:             awxOperatorRepoUrl,
-		Version:         values.ChartVersion,
-		Values:          nil,
-		ValuesFiles:     nil,
-		Namespace:       awxNamespace,
-		Upgrade:         true,
-		CreateNamespace: true,
-	}, kubeconfig, debug)
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.SetNamespace(awxNamespace)
+	helmClient.Settings.Debug = debug
+
+	// add awx-operator helm repo
+	err := helmClient.RepoAdd(awxOperatorChartName, awxOperatorRepoUrl)
+	if err != nil {
+		return fmt.Errorf("failed to add helm repo: %w", err)
+	}
+
+	// update helm repo
+	err = helmClient.RepoUpdate()
+	if err != nil {
+		return fmt.Errorf("failed to update helm repo: %w", err)
+	}
+
+	// install awx-operator
+	err = helmClient.InstallChart(awxOperatorChartName, awxOperatorChartName, awxOperatorChartName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to install awx-operator \n %w", err)
 	}
@@ -82,10 +90,13 @@ func Install(values Values, kubeconfig string, debug bool) error {
 }
 
 func Uninstall(kubeconfig string, debug bool) error {
-	return helm.Uninstall(helm.Chart{
-		Name:      awxOperatorChartName,
-		Namespace: awxNamespace,
-	}, kubeconfig, debug)
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.SetNamespace(awxNamespace)
+	helmClient.Settings.Debug = debug
+
+	// uninstall awx-operator
+	return helmClient.UninstallChart(awxOperatorChartName)
 }
 
 func addInstance(values instanceTmplValues, _ string, debug bool) error {

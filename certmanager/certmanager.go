@@ -16,14 +16,14 @@ import (
 )
 
 const (
-	certmanagerDefaultChartVersion  = ""
-	certmanagerString               = "cert-manager"
-	certmanagerChartName            = certmanagerString
-	certmanagerHelmRepoName         = "jetstack"
-	certmanagerHelmRepoURL          = "https://charts.jetstack.io"
-	certmanagerNamespace            = certmanagerString
-	certmanagerDeploymentName       = certmanagerString
-	defaultIngressClassResolver     = certmanagerString
+	certmanagerDefaultChartVersion = ""
+	certmanagerString              = "cert-manager"
+	certmanagerChartName           = certmanagerString
+	certmanagerHelmRepoName        = "jetstack"
+	certmanagerHelmRepoURL         = "https://charts.jetstack.io"
+	certmanagerNamespace           = certmanagerString
+	certmanagerDeploymentName      = certmanagerString
+
 	letsencryptStagingIssuerName    = "letsencrypt-staging"
 	letsencryptProductionIssuerName = "letsencrypt"
 	letsencryptStagingServer        = "https://acme-staging-v02.api.letsencrypt.org/directory"
@@ -82,18 +82,18 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return fmt.Errorf("failed to write traefik values.yaml \n %w", err)
 	}
 
-	err = helm.Install(helm.Chart{
-		Name:            certmanagerChartName,
-		Repo:            certmanagerHelmRepoName,
-		URL:             certmanagerHelmRepoURL,
-		Version:         values.Version,
-		Values:          nil,
-		ValuesFiles:     []string{valuesPath},
-		Namespace:       certmanagerNamespace,
-		Upgrade:         true,
-		CreateNamespace: true,
-	}, kubeconfig, debug)
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.Debug = debug
+	helmClient.Settings.SetNamespace(certmanagerNamespace)
 
+	// add repo
+	err = helmClient.RepoAdd(certmanagerHelmRepoName, certmanagerHelmRepoURL)
+	if err != nil {
+		return fmt.Errorf("failed to add cert-manager helm repo \n %w", err)
+	}
+
+	err = helmClient.InstallChart(certmanagerChartName, certmanagerHelmRepoName, certmanagerHelmRepoURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to install cert-manager \n %w", err)
 	}
@@ -122,7 +122,6 @@ func Install(values Values, kubeconfig string, debug bool) error {
 
 	// apply letsencrypt issuers
 	if values.LetsencryptIssuerEnabled {
-
 		if values.DnsChallengeEnabled {
 			// create secret
 			if values.DnsProvider == "azure" {
@@ -197,10 +196,11 @@ func Install(values Values, kubeconfig string, debug bool) error {
 }
 
 func Uninstall(kubeconfig string, debug bool) error {
-	return helm.Uninstall(helm.Chart{
-		Name:      certmanagerChartName,
-		Namespace: certmanagerNamespace,
-	}, kubeconfig, debug)
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.Debug = debug
+
+	return helmClient.UninstallChart(certmanagerChartName)
 }
 
 func validateValues(values *Values) error {

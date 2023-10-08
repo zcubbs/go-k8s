@@ -33,23 +33,32 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return err
 	}
 
-	vals := map[string]interface{}{
-		"configs.params.server\\.insecure": values.Insecure,
+	vals := map[string]string{
+		"configs.params.server\\.insecure": fmt.Sprintf("%t", values.Insecure),
 	}
 
-	err := helm.Install(helm.Chart{
-		Name:            argocdChartName,
-		Repo:            argocdHelmRepoName,
-		URL:             argocdHelmRepoURL,
-		Version:         values.ChartVersion,
-		Values:          vals,
-		ValuesFiles:     nil,
-		Namespace:       argocdNamespace,
-		Upgrade:         true,
-		CreateNamespace: true,
-	}, kubeconfig, debug)
+	// install argocd
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.SetNamespace(argocdNamespace)
+	helmClient.Settings.Debug = debug
+
+	// add argocd helm repo
+	err := helmClient.RepoAdd(argocdHelmRepoName, argocdHelmRepoURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to add helm repo: %w", err)
+	}
+
+	// update helm repo
+	err = helmClient.RepoUpdate()
+	if err != nil {
+		return fmt.Errorf("failed to update helm repo: %w", err)
+	}
+
+	// install argocd
+	err = helmClient.InstallChart(argocdChartName, argocdHelmRepoName, values.ChartVersion, vals)
+	if err != nil {
+		return fmt.Errorf("failed to install argocd \n %w", err)
 	}
 
 	// wait for argocd server to be ready
@@ -77,10 +86,13 @@ func Install(values Values, kubeconfig string, debug bool) error {
 }
 
 func Uninstall(kubeconfig string, debug bool) error {
-	return helm.Uninstall(helm.Chart{
-		Name:      argocdChartName,
-		Namespace: argocdNamespace,
-	}, kubeconfig, debug)
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.SetNamespace(argocdNamespace)
+	helmClient.Settings.Debug = debug
+
+	// uninstall argocd
+	return helmClient.UninstallChart(argocdChartName)
 }
 
 type Values struct {

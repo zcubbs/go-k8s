@@ -16,7 +16,10 @@ const InstallScript = "/tmp/k3s-install.sh"
 const UninstallScript = "/usr/local/bin/k3s-uninstall.sh"
 const ConfigFileLocation = "/etc/rancher/k3s"
 
+const withVersion = " INSTALL_K3S_VERSION=%s"
+
 type Config struct {
+	Version                 string
 	Disable                 []string
 	TlsSan                  []string
 	DataDir                 string
@@ -58,6 +61,9 @@ kubelet-arg:
 `
 
 func Install(config Config, debug bool) error {
+	if config.Version == "" {
+		config.Version = "latest"
+	}
 	if debug {
 		fmt.Printf("%+v\n", config)
 	}
@@ -99,6 +105,12 @@ func Install(config Config, debug bool) error {
 		return fmt.Errorf("error while running %s \n%v",
 			"chmod 0700 ./tmp/k3s-install.sh -s - --write-kubeconfig-mode 644",
 			err)
+	}
+
+	// export INSTALL_K3S_VERSION
+	err = os.Setenv("INSTALL_K3S_VERSION", config.Version)
+	if err != nil {
+		return fmt.Errorf("error while setting env var %s \n%v", "INSTALL_K3S_VERSION", err)
 	}
 
 	ok, err := bash.ExecuteScript(
