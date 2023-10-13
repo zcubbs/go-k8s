@@ -363,8 +363,8 @@ additionalArguments:
   {{- end }}
   {{- end }}
 ports:
-  web:
-    redirectTo: websecure
+  #web:
+  #  redirectTo: websecure
   websecure:
     tls:
       enabled: true

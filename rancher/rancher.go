@@ -109,6 +109,5 @@ replicas: 1
 hostname: {{ .Hostname }}
 ingress:
   enabled: false
-  tls:
-    source: external
+tls: external
 `
