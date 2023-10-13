@@ -79,11 +79,3 @@ jobs:
         with:
           name: ${{ steps.new_version.outputs.version }}
           tag_name: ${{ steps.new_version.outputs.version }}
-
-      - uses: goreleaser/goreleaser-action@7ec5c2b0c6cdda6e8bbb49444bc797dd33d74dd8 # v3.0.0
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release -f .goreleaser.yaml --clean --verbose
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
