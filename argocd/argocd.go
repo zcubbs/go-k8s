@@ -58,7 +58,7 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		ValuesFiles:     nil,
 		Debug:           debug,
 		CreateNamespace: true,
-		Upgrade:         false,
+		Upgrade:         true,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to install argocd \n %w", err)
