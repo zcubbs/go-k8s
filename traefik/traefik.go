@@ -338,6 +338,7 @@ additionalArguments:
   {{- end }}
   {{- if .ProxyProtocol }}
   {{- if .ProxyProtocolInsecure }}
+  - "--entrypoints.web.proxyProtocol.insecure"
   - "--entrypoints.websecure.proxyProtocol.insecure"
   {{- end }}
   {{- if .ProxyProtocolTrustedIPs }}
