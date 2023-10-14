@@ -19,7 +19,7 @@ const (
 	traefikChartVersion = "" // latest
 	traefikNamespace    = "traefik"
 
-	traefikDnsResolver = "letsencrypt"
+	traefikDefaultResolver = "letsencrypt"
 
 	traefikEndpointWeb       = "80"
 	traefikEndpointWebsecure = "443"
@@ -232,13 +232,32 @@ func getTmpFilePath(name string) string {
 }
 
 func validateValues(values *Values) error {
+
 	if values.IngressProvider != "" && values.DnsChallengeEnabled {
 		return fmt.Errorf("can't set both ingressProvider and dnsProvider")
+	} else if values.IngressProvider != "" && values.TlsChallengeEnabled {
+		return fmt.Errorf("can't set both ingressProvider and tlsChallenge")
+	} else if values.DnsChallengeEnabled && values.TlsChallengeEnabled {
+		return fmt.Errorf("can't set both dnsChallenge and tlsChallenge")
 	}
 
 	if values.DnsChallengeEnabled {
 		if values.DnsResolver == "" {
-			values.DnsResolver = traefikDnsResolver
+			values.DnsResolver = traefikDefaultResolver
+		}
+
+		if values.DnsResolverEmail == "" {
+			return fmt.Errorf("dnsResolverEmail is required")
+		}
+	}
+
+	if values.TlsChallengeEnabled {
+		if values.TlsResolver == "" {
+			values.TlsResolver = traefikDefaultResolver
+		}
+
+		if values.TlsResolverEmail == "" {
+			return fmt.Errorf("tlsResolverEmail is required")
 		}
 	}
 
@@ -270,6 +289,9 @@ type Values struct {
 	AdditionalArguments                []string
 	IngressProvider                    string
 	TlsStrictSNI                       bool
+	TlsChallengeEnabled                bool
+	TlsResolver                        string
+	TlsResolverEmail                   string
 	DnsChallengeEnabled                bool
 	DnsProvider                        string
 	DnsResolver                        string
@@ -328,7 +350,6 @@ additionalArguments:
   {{- end }}
   {{- if .ForwardedHeaders }}
   {{- if .ForwardedHeadersInsecure }}
-  - "--entrypoints.web.forwardedHeaders.insecure"
   - "--entrypoints.websecure.forwardedHeaders.insecure"
   {{- end }}
   {{- if .ForwardedHeadersTrustedIPs }}
@@ -338,12 +359,21 @@ additionalArguments:
   {{- end }}
   {{- if .ProxyProtocol }}
   {{- if .ProxyProtocolInsecure }}
-  - "--entrypoints.web.proxyProtocol.insecure"
   - "--entrypoints.websecure.proxyProtocol.insecure"
   {{- end }}
   {{- if .ProxyProtocolTrustedIPs }}
   - "--entrypoints.websecure.proxyProtocol.trustedIPs=127.0.0.1/32,{{ .ProxyProtocolTrustedIPs }}"
   {{- end }}
+  {{- end }}
+  {{- if .TlsChallengeEnabled }}
+  - "--certificatesresolvers.{{ .TlsResolver }}.acme.tlschallenge=true"
+  - "--certificatesresolvers.{{ .TlsResolver }}.acme.storage=/data/acme.json"
+  - "--certificatesresolvers.{{ .TlsResolver }}.acme.email={{ .TlsResolverEmail }}"
+  - "--certificatesresolvers.{{ .TlsResolver }}.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
+  - "--certificatesresolvers.{{ .TlsResolver }}-staging.acme.tlschallenge=true"
+  - "--certificatesresolvers.{{ .TlsResolver }}-staging.acme.storage=/data/acme.json"
+  - "--certificatesresolvers.{{ .TlsResolver }}-staging.acme.email={{ .TlsResolverEmail }}"
+  - "--certificatesresolvers.{{ .TlsResolver }}-staging.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
   {{- end }}
   {{- if .DnsChallengeEnabled }}
   - "--certificatesresolvers.{{ .DnsResolver }}-staging.acme.dnschallenge=true"
@@ -364,8 +394,6 @@ additionalArguments:
   {{- end }}
   {{- end }}
 ports:
-  #web:
-  #  redirectTo: websecure
   websecure:
     tls:
       enabled: true
@@ -395,6 +423,11 @@ logs:
     enabled: {{ .EnableAccessLog }}
 pilot:
   enabled: false
+
+{{- if .TlsChallengeEnabled }}
+providers:
+  kubernetesCRD: {}
+{{- end }}
 
 {{- if .IngressProvider }}
 providers:
