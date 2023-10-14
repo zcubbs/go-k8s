@@ -318,30 +318,21 @@ type Values struct {
 }
 
 var traefikValuesTmpl = `
-globalArguments:
+additionalArguments:
   - "--global.checknewversion=false"
   - "--global.sendanonymoususage=false"
-global:
-  sendAnonymousUsage: false
-  checkNewVersion: false
-  log:
+  - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+  - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+  - "--entrypoints.web.http.redirections.entrypoint.permanent=false"
+  - "--entrypoints.web.http.redirections.entrypoint.priority=1"
   {{- if .DebugLog }}
-    level: DEBUG
+  - "--log.level=DEBUG"
   {{- else }}
-    level: INFO
+  - "--log.level=INFO"
   {{- end }}
-  accessLogs:
   {{- if .EnableAccessLog }}
-    enabled: true
-  {{- else }}
-    enabled: false
+  - "--accesslog=true"
   {{- end }}
-service:
-  enabled: true
-  type: LoadBalancer
-rbac:
-  enabled: true
-additionalArguments:
   {{- range $i, $arg := .AdditionalArguments }}
   - "{{ printf "%s" . }}"
   {{- end }}
@@ -393,6 +384,13 @@ additionalArguments:
   - "--certificatesresolvers.{{ .DnsResolver }}.acme.dnschallenge.resolvers={{ .DnsResolverIPs }}"
   {{- end }}
   {{- end }}
+
+service:
+  enabled: true
+  type: LoadBalancer
+rbac:
+  enabled: true
+
 ports:
   websecure:
     tls:
@@ -412,15 +410,6 @@ ingressRoute:
   dashboard:
     enabled: {{ .EnableDashboard }}
 
-logs:
-  general:
-  {{- if .DebugLog }}
-    level: DEBUG
-  {{- else }}
-    level: INFO
-  {{- end }}
-  access:
-    enabled: {{ .EnableAccessLog }}
 pilot:
   enabled: false
 
