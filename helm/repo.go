@@ -108,21 +108,27 @@ func (c *Client) RepoUpdate() error {
 		repos = append(repos, r)
 	}
 
-	fmt.Printf("Hang tight while we grab the latest from your chart repositories...\n")
+	if c.Settings.Debug {
+		fmt.Printf("Hang tight while we grab the latest from your chart repositories...\n")
+	}
 	var wg sync.WaitGroup
 	for _, re := range repos {
 		wg.Add(1)
 		go func(re *repo.ChartRepository) {
 			defer wg.Done()
-			if _, err := re.DownloadIndexFile(); err != nil {
-				fmt.Printf("...Unable to get an update from the %q chart repository (%s):\n\t%s\n", re.Config.Name, re.Config.URL, err)
-			} else {
-				fmt.Printf("...Successfully got an update from the %q chart repository\n", re.Config.Name)
+			if c.Settings.Debug {
+				if _, err := re.DownloadIndexFile(); err != nil {
+					fmt.Printf("...Unable to get an update from the %q chart repository (%s):\n\t%s\n", re.Config.Name, re.Config.URL, err)
+				} else {
+					fmt.Printf("...Successfully got an update from the %q chart repository\n", re.Config.Name)
+				}
 			}
 		}(re)
 	}
 	wg.Wait()
-	fmt.Printf("Update Complete. ⎈ Happy Helming!⎈\n")
+	if c.Settings.Debug {
+		fmt.Printf("Update Complete. ⎈ Happy Helming!⎈\n")
+	}
 
 	return nil
 }

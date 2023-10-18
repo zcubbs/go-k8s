@@ -12,3 +12,12 @@ func debug(format string, v ...interface{}) {
 		fmt.Printf("error: %s", err)
 	}
 }
+
+func getDebug(enable bool) func(format string, v ...interface{}) {
+	if enable {
+		return debug
+	}
+	return func(format string, v ...interface{}) {
+		// do nothing
+	}
+}

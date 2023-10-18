@@ -69,7 +69,8 @@ func (c *Client) initActionConfig() (*action.Configuration, error) {
 	if err := actionConfig.Init(
 		c.Settings.RESTClientGetter(),
 		c.Settings.Namespace(),
-		os.Getenv("HELM_DRIVER"), debug); err != nil {
+		os.Getenv("HELM_DRIVER"),
+		getDebug(c.Settings.Debug)); err != nil {
 		return nil, fmt.Errorf("failed to initialize helm action configuration: %w", err)
 	}
 	return actionConfig, nil
@@ -166,7 +167,8 @@ func (c *Client) UninstallChart(name string) error {
 	if err := actionConfig.Init(
 		c.Settings.RESTClientGetter(),
 		c.Settings.Namespace(),
-		os.Getenv("HELM_DRIVER"), debug); err != nil {
+		os.Getenv("HELM_DRIVER"),
+		getDebug(c.Settings.Debug)); err != nil {
 		return fmt.Errorf("failed to initialize helm action configuration: %w", err)
 	}
 	client := action.NewUninstall(actionConfig)
