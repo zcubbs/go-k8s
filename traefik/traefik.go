@@ -325,6 +325,8 @@ additionalArguments:
   - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
   - "--entrypoints.web.http.redirections.entrypoint.permanent=false"
   - "--entrypoints.web.http.redirections.entrypoint.priority=1"
+  - "--entrypoints.web.address=:{{ .EndpointsWeb }}"
+  - "--entrypoints.websecure.address=:{{ .EndpointsWebsecure }}"
   {{- if .DebugLog }}
   - "--log.level=DEBUG"
   {{- else }}
