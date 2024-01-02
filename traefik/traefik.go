@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/zcubbs/go-k8s/helm"
 	"github.com/zcubbs/go-k8s/kubernetes"
-	"github.com/zcubbs/x/secret"
+	"github.com/zcubbs/secret"
 	"github.com/zcubbs/x/yaml"
 	"os"
 	"time"

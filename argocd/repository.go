@@ -3,7 +3,7 @@ package argocd
 import (
 	"fmt"
 	"github.com/zcubbs/go-k8s/kubernetes"
-	"github.com/zcubbs/x/secret"
+	"github.com/zcubbs/secret"
 	"strings"
 )
 
