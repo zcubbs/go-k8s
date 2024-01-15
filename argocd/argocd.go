@@ -33,10 +33,6 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		return err
 	}
 
-	vals := map[string]string{
-		"configs.params.server\\.insecure": fmt.Sprintf("%t", values.Insecure),
-	}
-
 	// install argocd
 	helmClient := helm.NewClient()
 	helmClient.Settings.KubeConfig = kubeconfig
@@ -54,7 +50,7 @@ func Install(values Values, kubeconfig string, debug bool) error {
 		ChartName:       argocdChartName,
 		ReleaseName:     argocdChartName,
 		RepoName:        argocdHelmRepoName,
-		Values:          vals,
+		Values:          nil,
 		ValuesFiles:     nil,
 		Debug:           debug,
 		CreateNamespace: true,
@@ -83,6 +79,22 @@ func Install(values Values, kubeconfig string, debug bool) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to wait for argocd server to be ready \n %w", err)
+	}
+
+	// patch argocd-cmd-params-cm configmap to set insecure flag
+	err = patchConfigMap(kubeconfig, argocdNamespace, "argocd-cmd-params-cm", map[string]string{
+		"server.insecure": fmt.Sprintf("%t", values.Insecure),
+	}, debug)
+	if err != nil {
+		return fmt.Errorf("failed to patch argocd-cmd-params-cm: %w", err)
+	}
+
+	// restart argocd server pod
+	err = kubernetes.RestartPods(kubeconfig, argocdNamespace, []string{
+		argocdServerDeploymentName,
+	}, debug)
+	if err != nil {
+		return fmt.Errorf("failed to restart argocd server pod: %w", err)
 	}
 
 	return nil
@@ -190,5 +202,23 @@ func validateValues(values Values) error {
 	if values.ChartVersion == "" {
 		values.ChartVersion = argocdChartVersion
 	}
+	return nil
+}
+
+func patchConfigMap(kubeconfig string, namespace string, name string, patch map[string]string, debug bool) error {
+	cm, err := kubernetes.GetConfigMap(kubeconfig, namespace, name)
+	if err != nil {
+		return fmt.Errorf("failed to get configmap %s: %w", name, err)
+	}
+
+	for k, v := range patch {
+		cm.Data[k] = v
+	}
+
+	err = kubernetes.UpdateConfigMap(kubeconfig, cm, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to update configmap %s: %w", name, err)
+	}
+
 	return nil
 }

@@ -4,10 +4,6 @@ env:
   GOOS: "{{OS}}"
 
 tasks:
-  build:
-    desc: Build Go Binaries
-    cmds:
-      - go build -v ./...
 
   test:
     desc: Run tests
