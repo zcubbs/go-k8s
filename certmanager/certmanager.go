@@ -408,7 +408,7 @@ spec:
             tenantID: {{ .DnsAzureTenantID }}
         selector:
           dnsZones:
-		    - {{ .DnsAzureHostedZoneName }}
+            - {{ .DnsAzureHostedZoneName }}
           {{- end }}
       {{- else if .HttpChallengeEnabled }}
       - http01:
