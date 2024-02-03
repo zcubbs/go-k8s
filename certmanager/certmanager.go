@@ -41,12 +41,19 @@ type Values struct {
 	DnsProvider                     string
 	DnsRecursiveNameservers         []string
 	DnsRecursiveNameserversOnly     bool
-	DnsAzureClientID                string
-	DnsAzureClientSecret            string
-	DnsAzureHostedZoneName          string
-	DnsAzureResourceGroupName       string
-	DnsAzureSubscriptionID          string
-	DnsAzureTenantID                string
+
+	DnsAzureClientID          string
+	DnsAzureClientSecret      string
+	DnsAzureHostedZoneName    string
+	DnsAzureResourceGroupName string
+	DnsAzureSubscriptionID    string
+	DnsAzureTenantID          string
+
+	DnsOvhEndpoint          string
+	DnsOvhApplicationKey    string
+	DnsOvhApplicationSecret string
+	DnsOvhConsumerKey       string
+	DnsOvhZone              string
 }
 
 func Install(values Values, kubeconfig string, debug bool) error {
@@ -153,6 +160,33 @@ func Install(values Values, kubeconfig string, debug bool) error {
 				if err != nil {
 					return fmt.Errorf("failed to create azuredns-config secret \n %w", err)
 				}
+			} else if values.DnsProvider == "ovh" {
+				err = installOvhHook(kubeconfig, debug)
+				if err != nil {
+					return fmt.Errorf("failed to install ovh hook \n %w", err)
+				}
+
+				err = kubernetes.CreateGenericSecret(
+					context.Background(),
+					kubeconfig,
+					v1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "ovh-credentials",
+						},
+						Type: v1.SecretTypeOpaque,
+						Data: map[string][]byte{
+							"applicationKey":    []byte(values.DnsOvhApplicationKey),
+							"applicationSecret": []byte(values.DnsOvhApplicationSecret),
+							"consumerKey":       []byte(values.DnsOvhConsumerKey),
+						},
+					},
+					[]string{certmanagerNamespace},
+					true,
+					debug,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to create ovh-credentials secret \n %w", err)
+				}
 			} else {
 				return fmt.Errorf("dns provider %s is not supported", values.DnsProvider)
 			}
@@ -160,20 +194,27 @@ func Install(values Values, kubeconfig string, debug bool) error {
 
 		// staging
 		err = applyIssuer(Issuer{
-			IssuerName:                letsencryptStagingIssuerName,
-			IssuerEmail:               values.LetsencryptIssuerEmail,
-			IssuerServer:              letsencryptStagingServer,
-			IngressClassResolver:      values.LetsEncryptIngressClassResolver,
-			Namespace:                 kubeSystemNamespace,
-			HttpChallengeEnabled:      values.HttpChallengeEnabled,
-			DnsChallengeEnabled:       values.DnsChallengeEnabled,
-			DnsProvider:               values.DnsProvider,
+			IssuerName:           letsencryptStagingIssuerName,
+			IssuerEmail:          values.LetsencryptIssuerEmail,
+			IssuerServer:         letsencryptStagingServer,
+			IngressClassResolver: values.LetsEncryptIngressClassResolver,
+			Namespace:            kubeSystemNamespace,
+			HttpChallengeEnabled: values.HttpChallengeEnabled,
+			DnsChallengeEnabled:  values.DnsChallengeEnabled,
+			DnsProvider:          values.DnsProvider,
+
 			DnsAzureClientID:          values.DnsAzureClientID,
 			DnsAzureClientSecret:      values.DnsAzureClientSecret,
 			DnsAzureHostedZoneName:    values.DnsAzureHostedZoneName,
 			DnsAzureResourceGroupName: values.DnsAzureResourceGroupName,
 			DnsAzureSubscriptionID:    values.DnsAzureSubscriptionID,
 			DnsAzureTenantID:          values.DnsAzureTenantID,
+
+			DnsOvhEndpoint:          values.DnsOvhEndpoint,
+			DnsOvhApplicationKey:    values.DnsOvhApplicationKey,
+			DnsOvhApplicationSecret: values.DnsOvhApplicationSecret,
+			DnsOvhConsumerKey:       values.DnsOvhConsumerKey,
+			DnsOvhZone:              values.DnsOvhZone,
 		}, kubeconfig, debug)
 		if err != nil {
 			return fmt.Errorf("failed to apply letsencrypt staging issuer \n %w", err)
@@ -181,20 +222,27 @@ func Install(values Values, kubeconfig string, debug bool) error {
 
 		// production
 		err = applyIssuer(Issuer{
-			IssuerName:                letsencryptProductionIssuerName,
-			IssuerEmail:               values.LetsencryptIssuerEmail,
-			IssuerServer:              letsencryptProductionServer,
-			IngressClassResolver:      values.LetsEncryptIngressClassResolver,
-			Namespace:                 kubeSystemNamespace,
-			HttpChallengeEnabled:      values.HttpChallengeEnabled,
-			DnsChallengeEnabled:       values.DnsChallengeEnabled,
-			DnsProvider:               values.DnsProvider,
+			IssuerName:           letsencryptProductionIssuerName,
+			IssuerEmail:          values.LetsencryptIssuerEmail,
+			IssuerServer:         letsencryptProductionServer,
+			IngressClassResolver: values.LetsEncryptIngressClassResolver,
+			Namespace:            kubeSystemNamespace,
+			HttpChallengeEnabled: values.HttpChallengeEnabled,
+			DnsChallengeEnabled:  values.DnsChallengeEnabled,
+			DnsProvider:          values.DnsProvider,
+
 			DnsAzureClientID:          values.DnsAzureClientID,
 			DnsAzureClientSecret:      values.DnsAzureClientSecret,
 			DnsAzureHostedZoneName:    values.DnsAzureHostedZoneName,
 			DnsAzureResourceGroupName: values.DnsAzureResourceGroupName,
 			DnsAzureSubscriptionID:    values.DnsAzureSubscriptionID,
 			DnsAzureTenantID:          values.DnsAzureTenantID,
+
+			DnsOvhEndpoint:          values.DnsOvhEndpoint,
+			DnsOvhApplicationKey:    values.DnsOvhApplicationKey,
+			DnsOvhApplicationSecret: values.DnsOvhApplicationSecret,
+			DnsOvhConsumerKey:       values.DnsOvhConsumerKey,
+			DnsOvhZone:              values.DnsOvhZone,
 		}, kubeconfig, debug)
 		if err != nil {
 			return fmt.Errorf("failed to apply letsencrypt production issuer \n %w", err)
@@ -285,6 +333,40 @@ func parseSecretValues(values *Values) error {
 			values.DnsAzureResourceGroupName = azureResourceGroup
 			values.DnsAzureSubscriptionID = azureSubscriptionID
 			values.DnsAzureTenantID = azureTenantID
+		} else if values.DnsProvider == "ovh" {
+			// load env vars
+			ovhEndpoint := mustLoadEnvVar(values.DnsOvhEndpoint)
+			ovhApplicationKey := mustLoadEnvVar(values.DnsOvhApplicationKey)
+			ovhApplicationSecret := mustLoadEnvVar(values.DnsOvhApplicationSecret)
+			ovhConsumerKey := mustLoadEnvVar(values.DnsOvhConsumerKey)
+			ovhZone := mustLoadEnvVar(values.DnsOvhZone)
+
+			// validate env vars
+			if ovhEndpoint == "" {
+				return fmt.Errorf("ovh endpoint is required")
+			}
+
+			if ovhApplicationKey == "" {
+				return fmt.Errorf("ovh application key is required")
+			}
+
+			if ovhApplicationSecret == "" {
+				return fmt.Errorf("ovh application secret is required")
+			}
+
+			if ovhConsumerKey == "" {
+				return fmt.Errorf("ovh consumer key is required")
+			}
+
+			if ovhZone == "" {
+				return fmt.Errorf("ovh zone is required")
+			}
+
+			values.DnsOvhEndpoint = ovhEndpoint
+			values.DnsOvhApplicationKey = ovhApplicationKey
+			values.DnsOvhApplicationSecret = ovhApplicationSecret
+			values.DnsOvhConsumerKey = ovhConsumerKey
+
 		} else {
 			return fmt.Errorf("dns provider %s is not supported", values.DnsProvider)
 		}
@@ -331,20 +413,27 @@ func getMergedRecursiveNameservers(nameservers []string) string {
 }
 
 type Issuer struct {
-	IssuerName                string
-	IssuerEmail               string
-	IssuerServer              string
-	IngressClassResolver      string
-	Namespace                 string
-	HttpChallengeEnabled      bool
-	DnsChallengeEnabled       bool
-	DnsProvider               string
+	IssuerName           string
+	IssuerEmail          string
+	IssuerServer         string
+	IngressClassResolver string
+	Namespace            string
+	HttpChallengeEnabled bool
+	DnsChallengeEnabled  bool
+	DnsProvider          string
+
 	DnsAzureClientID          string
 	DnsAzureClientSecret      string
 	DnsAzureHostedZoneName    string
 	DnsAzureResourceGroupName string
 	DnsAzureSubscriptionID    string
 	DnsAzureTenantID          string
+
+	DnsOvhEndpoint          string
+	DnsOvhApplicationKey    string
+	DnsOvhApplicationSecret string
+	DnsOvhConsumerKey       string
+	DnsOvhZone              string
 }
 
 type ValuesFile struct {
@@ -410,9 +499,107 @@ spec:
           dnsZones:
             - {{ .DnsAzureHostedZoneName }}
           {{- end }}
+	      {{- if eq .DnsProvider "ovh" }}
+          webhook:
+            groupName: "{{ .DnsOvhZone }}"
+            solverName: ovh
+            config:
+              endpoint: "{{ .DnsOvhEndpoint }}"
+              applicationKeyRef:
+                name: ovh-credentials
+                key: "applicationKey"
+              applicationSecretRef:
+                name: ovh-credentials
+                key: "applicationSecret"
+              consumerKeyRef:
+                name: ovh-credentials
+                key: "consumerKey"
+        selector:
+          dnsZones:
+            - "{{ .DnsOvhZone }}"
+		  {{- end }}
       {{- else if .HttpChallengeEnabled }}
       - http01:
           ingress:
             class: {{ .IngressClassResolver }}
       {{- end }}
 `
+
+var ovhHookServiceAccountTmpl = `---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cert-manager-webhook-ovh:secret-reader
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["ovh-credentials"]
+  verbs: ["get", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cert-manager-webhook-ovh:secret-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cert-manager-webhook-ovh:secret-reader
+subjects:
+- apiGroup: ""
+  kind: ServiceAccount
+  name: cert-manager-webhook-ovh
+`
+
+func mustLoadEnvVar(key string) string {
+	val, err := secret.Provide(key)
+	if err != nil {
+		panic(fmt.Errorf("env var %s is required", key))
+	}
+	return val
+}
+
+func installOvhHookServiceAccount(_ string, debug bool) error {
+	return kubernetes.ApplyManifest(
+		ovhHookServiceAccountTmpl,
+		nil,
+		debug,
+	)
+}
+
+const certManagerWebhookOvhChartName = "cert-manager-webhook-ovh"
+const certManagerWebhookOvhChartRepo = "https://aureq.github.io/cert-manager-webhook-ovh/"
+
+func installOvhHook(kubeconfig string, debug bool) error {
+	// install service account
+	err := installOvhHookServiceAccount(kubeconfig, debug)
+	if err != nil {
+		return fmt.Errorf("failed to install ovh hook service account \n %w", err)
+	}
+
+	// install OVH webhook helm chart
+	helmClient := helm.NewClient()
+	helmClient.Settings.KubeConfig = kubeconfig
+	helmClient.Settings.Debug = debug
+	helmClient.Settings.SetNamespace(certmanagerNamespace)
+
+	err = helmClient.RepoAddAndUpdate(certManagerWebhookOvhChartName, certManagerWebhookOvhChartRepo)
+	if err != nil {
+		return fmt.Errorf("failed to add cert-manager-webhook-ovh helm repo \n %w", err)
+	}
+
+	err = helmClient.InstallChart(helm.Chart{
+		ChartName:       certManagerWebhookOvhChartName,
+		ReleaseName:     certManagerWebhookOvhChartName,
+		RepoName:        certManagerWebhookOvhChartName,
+		Values:          nil,
+		ValuesFiles:     nil,
+		Debug:           debug,
+		CreateNamespace: true,
+		Upgrade:         true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to install cert-manager-webhook-ovh \n %w", err)
+	}
+
+	return nil
+}
