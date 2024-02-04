@@ -161,11 +161,7 @@ func Install(values Values, kubeconfig string, debug bool) error {
 					return fmt.Errorf("failed to create azuredns-config secret \n %w", err)
 				}
 			} else if values.DnsProvider == "ovh" {
-				err = installOvhHook(kubeconfig, debug)
-				if err != nil {
-					return fmt.Errorf("failed to install ovh hook \n %w", err)
-				}
-
+				// create secret
 				err = kubernetes.CreateGenericSecret(
 					context.Background(),
 					kubeconfig,
@@ -187,6 +183,11 @@ func Install(values Values, kubeconfig string, debug bool) error {
 				if err != nil {
 					return fmt.Errorf("failed to create ovh-credentials secret \n %w", err)
 				}
+				// install ovh hook
+				err = installOvhHook(values, kubeconfig, debug)
+				if err != nil {
+					return fmt.Errorf("failed to install ovh hook \n %w", err)
+				}
 			} else {
 				return fmt.Errorf("dns provider %s is not supported", values.DnsProvider)
 			}
@@ -198,7 +199,7 @@ func Install(values Values, kubeconfig string, debug bool) error {
 			IssuerEmail:          values.LetsencryptIssuerEmail,
 			IssuerServer:         letsencryptStagingServer,
 			IngressClassResolver: values.LetsEncryptIngressClassResolver,
-			Namespace:            kubeSystemNamespace,
+			Namespace:            certmanagerNamespace,
 			HttpChallengeEnabled: values.HttpChallengeEnabled,
 			DnsChallengeEnabled:  values.DnsChallengeEnabled,
 			DnsProvider:          values.DnsProvider,
@@ -220,13 +221,13 @@ func Install(values Values, kubeconfig string, debug bool) error {
 			return fmt.Errorf("failed to apply letsencrypt staging issuer \n %w", err)
 		}
 
-		// production
+		//production
 		err = applyIssuer(Issuer{
 			IssuerName:           letsencryptProductionIssuerName,
 			IssuerEmail:          values.LetsencryptIssuerEmail,
 			IssuerServer:         letsencryptProductionServer,
 			IngressClassResolver: values.LetsEncryptIngressClassResolver,
-			Namespace:            kubeSystemNamespace,
+			Namespace:            certmanagerNamespace,
 			HttpChallengeEnabled: values.HttpChallengeEnabled,
 			DnsChallengeEnabled:  values.DnsChallengeEnabled,
 			DnsProvider:          values.DnsProvider,
@@ -500,8 +501,9 @@ spec:
             - {{ .DnsAzureHostedZoneName }}
           {{- end }}
 	      {{- if eq .DnsProvider "ovh" }}
+          cnameStrategy: None
           webhook:
-            groupName: "{{ .DnsOvhZone }}"
+            groupName: "acme.{{ .DnsOvhZone }}"
             solverName: ovh
             config:
               endpoint: "{{ .DnsOvhEndpoint }}"
@@ -514,9 +516,6 @@ spec:
               consumerKeyRef:
                 name: ovh-credentials
                 key: "consumerKey"
-        selector:
-          dnsZones:
-            - "{{ .DnsOvhZone }}"
 		  {{- end }}
       {{- else if .HttpChallengeEnabled }}
       - http01:
@@ -525,29 +524,28 @@ spec:
       {{- end }}
 `
 
-var ovhHookServiceAccountTmpl = `---
+const ovhHookServiceAccountTmpl = `---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: cert-manager-webhook-ovh:secret-reader
+  name: cert-manager-webhook-ovh-secrets
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
-  resourceNames: ["ovh-credentials"]
-  verbs: ["get", "watch"]
+  verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: cert-manager-webhook-ovh:secret-reader
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: cert-manager-webhook-ovh:secret-reader
+  name: cert-manager-webhook-ovh-secrets-binding
 subjects:
-- apiGroup: ""
-  kind: ServiceAccount
+- kind: ServiceAccount
   name: cert-manager-webhook-ovh
+  namespace: cert-manager
+roleRef:
+  kind: ClusterRole
+  name: cert-manager-webhook-ovh-secrets
+  apiGroup: rbac.authorization.k8s.io
 `
 
 func mustLoadEnvVar(key string) string {
@@ -558,22 +556,22 @@ func mustLoadEnvVar(key string) string {
 	return val
 }
 
-func installOvhHookServiceAccount(_ string, debug bool) error {
-	return kubernetes.ApplyManifest(
-		ovhHookServiceAccountTmpl,
-		nil,
-		debug,
-	)
-}
-
 const certManagerWebhookOvhChartName = "cert-manager-webhook-ovh"
 const certManagerWebhookOvhChartRepo = "https://aureq.github.io/cert-manager-webhook-ovh/"
 
-func installOvhHook(kubeconfig string, debug bool) error {
-	// install service account
-	err := installOvhHookServiceAccount(kubeconfig, debug)
+func installOvhHook(values Values, kubeconfig string, debug bool) error {
+	// create service account
+	err := kubernetes.ApplyManifest(
+		ovhHookServiceAccountTmpl,
+		struct {
+			Namespace string
+		}{
+			Namespace: certmanagerNamespace,
+		},
+		debug,
+	)
 	if err != nil {
-		return fmt.Errorf("failed to install ovh hook service account \n %w", err)
+		return fmt.Errorf("failed to apply ovh hook service account \n %w", err)
 	}
 
 	// install OVH webhook helm chart
@@ -587,12 +585,47 @@ func installOvhHook(kubeconfig string, debug bool) error {
 		return fmt.Errorf("failed to add cert-manager-webhook-ovh helm repo \n %w", err)
 	}
 
+	// create cert-manager values.yaml from template
+	valuesFileContent, err := yaml.ApplyTmpl(
+		ovhHookValuesTmpl,
+		struct {
+			Namespace            string
+			ServiceAccountName   string
+			GroupName            string
+			Email                string
+			OvhEndpointName      string
+			OvhApplicationKey    string
+			OvhApplicationSecret string
+			OvhConsumerKey       string
+		}{
+			Namespace:            certmanagerNamespace,
+			ServiceAccountName:   "cert-manager-webhook-ovh",
+			GroupName:            fmt.Sprintf("acme.%s", values.DnsOvhZone),
+			Email:                values.LetsencryptIssuerEmail,
+			OvhEndpointName:      values.DnsOvhEndpoint,
+			OvhApplicationKey:    values.DnsOvhApplicationKey,
+			OvhApplicationSecret: values.DnsOvhApplicationSecret,
+			OvhConsumerKey:       values.DnsOvhConsumerKey,
+		},
+		debug,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to apply template \n %w", err)
+	}
+
+	valuesPath := getTmpFilePath("values")
+	// write tmp manifest
+	err = os.WriteFile(valuesPath, valuesFileContent, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write traefik values.yaml \n %w", err)
+	}
+
 	err = helmClient.InstallChart(helm.Chart{
 		ChartName:       certManagerWebhookOvhChartName,
 		ReleaseName:     certManagerWebhookOvhChartName,
 		RepoName:        certManagerWebhookOvhChartName,
 		Values:          nil,
-		ValuesFiles:     nil,
+		ValuesFiles:     []string{valuesPath},
 		Debug:           debug,
 		CreateNamespace: true,
 		Upgrade:         true,
@@ -603,3 +636,10 @@ func installOvhHook(kubeconfig string, debug bool) error {
 
 	return nil
 }
+
+const ovhHookValuesTmpl = `---
+groupName: {{ .GroupName }}
+
+serviceAccount:
+  create: true
+`
