@@ -12,15 +12,16 @@ const Git = "git"
 const Helm = "helm"
 
 type Repository struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Url       string `json:"url"`
+	Name string `json:"name"`
+	Url  string `json:"url"`
 
 	Username string `json:"username"`
 	Password string `json:"password"`
 
 	Type  string `json:"type"`
 	IsOci bool   `json:"isOci"`
+
+	Namespace string `json:"namespace"`
 }
 
 func CreateRepository(repo Repository, _ string, debug bool) error {
