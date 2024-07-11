@@ -27,7 +27,6 @@ func CreateRepository(repo Repository, _ string, debug bool) error {
 	if repo.Namespace == "" {
 		repo.Namespace = argocdNamespace
 	}
-
 	if repo.Type != Git && repo.Type != Helm {
 		return fmt.Errorf("invalid repository type: %s, must be git of helm", repo.Type)
 	}
