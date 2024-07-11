@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"fmt"
+
 	"github.com/zcubbs/go-k8s/kubernetes"
 )
 
@@ -11,7 +12,9 @@ type Project struct {
 }
 
 func CreateProject(project Project, _ string, debug bool) error {
-	project.Namespace = argocdNamespace
+	if project.Namespace == "" {
+		project.Namespace = argocdNamespace
+	}
 	// Apply template
 	err := kubernetes.ApplyManifest(projectTmpl, project, debug)
 	if err != nil {

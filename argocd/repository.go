@@ -2,17 +2,19 @@ package argocd
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/zcubbs/go-k8s/kubernetes"
 	"github.com/zcubbs/secret"
-	"strings"
 )
 
 const Git = "git"
 const Helm = "helm"
 
 type Repository struct {
-	Name string `json:"name"`
-	Url  string `json:"url"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Url       string `json:"url"`
 
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -22,6 +24,10 @@ type Repository struct {
 }
 
 func CreateRepository(repo Repository, _ string, debug bool) error {
+	if repo.Namespace == "" {
+		repo.Namespace = argocdNamespace
+	}
+
 	if repo.Type != Git && repo.Type != Helm {
 		return fmt.Errorf("invalid repository type: %s, must be git of helm", repo.Type)
 	}
@@ -50,7 +56,7 @@ func CreateRepository(repo Repository, _ string, debug bool) error {
 
 	tmpValues := repoTmplValues{
 		Name:      repo.Name,
-		Namespace: argocdNamespace,
+		Namespace: repo.Namespace,
 		Type:      repo.Type,
 		IsOci:     repo.IsOci,
 		Url:       repo.Url,
