@@ -30,7 +30,7 @@ func (c *Client) RepoAdd(name, url string) error {
 	repoFile := c.Settings.RepositoryConfig
 
 	//Ensure the file directory exists as it is required for file locking
-	err := os.MkdirAll(filepath.Dir(repoFile), os.ModePerm)
+	err := os.MkdirAll(filepath.Dir(repoFile), 0750)
 	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(repoFile), err)
 	}
