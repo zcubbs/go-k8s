@@ -1,8 +1,6 @@
 module github.com/zcubbs/go-k8s
 
-go 1.22.0
-
-toolchain go1.23.2
+go 1.23
 
 require (
 	github.com/gofrs/flock v0.12.1
