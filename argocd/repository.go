@@ -24,7 +24,7 @@ type Repository struct {
 	Namespace string `json:"namespace"`
 }
 
-func CreateRepository(repo Repository, _ string, debug bool) error {
+func CreateRepository(repo Repository, kubeconfig string, debug bool) error {
 	if repo.Namespace == "" {
 		repo.Namespace = argocdNamespace
 	}
@@ -64,7 +64,7 @@ func CreateRepository(repo Repository, _ string, debug bool) error {
 		Password:  password,
 	}
 
-	err = kubernetes.ApplyManifest(repoTmpl, tmpValues, debug)
+	err = kubernetes.ApplyManifestWithKc(repoTmpl, tmpValues, kubeconfig, debug)
 	if err != nil {
 		return err
 	}

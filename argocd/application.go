@@ -28,7 +28,7 @@ type Application struct {
 	ArgoNamespace string `json:"argoNamespace"`
 }
 
-func CreateApplication(app Application, _ string, debug bool) error {
+func CreateApplication(app Application, kubeconfig string, debug bool) error {
 	if err := validateApp(&app); err != nil {
 		return err
 	}
@@ -40,14 +40,14 @@ func CreateApplication(app Application, _ string, debug bool) error {
 	// create app
 	if app.IsOCI {
 		// Apply template
-		err := kubernetes.ApplyManifest(argoAppOciTmpl, app, debug)
+		err := kubernetes.ApplyManifestWithKc(argoAppOciTmpl, app, kubeconfig, debug)
 		if err != nil {
 			return fmt.Errorf("failed to create application: %s, %w", app.Name, err)
 		}
 		return nil
 	}
 
-	return kubernetes.ApplyManifest(argoAppTmpl, app, debug)
+	return kubernetes.ApplyManifestWithKc(argoAppTmpl, app, kubeconfig, debug)
 }
 
 func validateApp(app *Application) error {
