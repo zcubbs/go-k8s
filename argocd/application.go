@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"fmt"
+
 	"github.com/zcubbs/go-k8s/kubernetes"
 	"github.com/zcubbs/x/pretty"
 )
@@ -16,6 +17,7 @@ type Application struct {
 	IsHelm           bool     `json:"isHelm"`
 	HelmValueFiles   []string `json:"helmValueFiles"`
 	Project          string   `json:"project"`
+	Cluster          string   `json:"cluster"`
 	RepoURL          string   `json:"repoURL"`
 	TargetRevision   string   `json:"targetRevision"`
 	Path             string   `json:"path"`
@@ -35,6 +37,10 @@ func CreateApplication(app Application, _ string, debug bool) error {
 
 	if debug {
 		pretty.PrintJson(app)
+	}
+
+	if app.Cluster == "" {
+		app.Cluster = "https://kubernetes.default.svc"
 	}
 
 	// create app
@@ -99,7 +105,7 @@ spec:
       recurse: {{ .Recurse }}
     {{ end }}
   destination:
-    server: https://kubernetes.default.svc
+    server: {{ .Cluster }}
     namespace: {{ .Namespace }}
   syncPolicy:
     syncOptions:
@@ -133,7 +139,7 @@ spec:
       targetRevision: {{ .TargetRevision }}
       ref: values
   destination:
-    server: https://kubernetes.default.svc
+    server: {{ .Cluster }}
     namespace: {{ .AppNamespace }}
   syncPolicy:
     syncOptions:
