@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"fmt"
+
 	"github.com/zcubbs/go-k8s/kubernetes"
 )
 
@@ -10,10 +11,12 @@ type Project struct {
 	Namespace string `mapstructure:"namespace" json:"namespace" yaml:"namespace"`
 }
 
-func CreateProject(project Project, _ string, debug bool) error {
-	project.Namespace = argocdNamespace
+func CreateProject(project Project, kubeconfig string, debug bool) error {
+	if project.Namespace == "" {
+		project.Namespace = argocdNamespace
+	}
 	// Apply template
-	err := kubernetes.ApplyManifest(projectTmpl, project, debug)
+	err := kubernetes.ApplyManifestWithKc(projectTmpl, project, kubeconfig, debug)
 	if err != nil {
 		return fmt.Errorf("failed to create project: %w", err)
 	}
