@@ -7,8 +7,9 @@ import (
 )
 
 type Project struct {
-	Name      string `mapstructure:"name" json:"name" yaml:"name"`
-	Namespace string `mapstructure:"namespace" json:"namespace" yaml:"namespace"`
+	Name        string   `mapstructure:"name" json:"name" yaml:"name"`
+	Namespace   string   `mapstructure:"namespace" json:"namespace" yaml:"namespace"`
+	ClustersUrl []string `mapstructure:"clustersUrl" json:"clustersUrl" yaml:"clustersUrl"`
 }
 
 func CreateProject(project Project, kubeconfig string, debug bool) error {
@@ -42,5 +43,10 @@ spec:
   destinations:
     - namespace: '*'
       server: https://kubernetes.default.svc
-
+    {{ if .ClustersUrl }}
+    {{- range .ClustersUrl }}
+    - namespace: '*'
+      server: {{ . }}
+    {{- end }}
+    {{- end }}
 `
