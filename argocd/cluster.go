@@ -9,12 +9,15 @@ import (
 type Cluster struct {
 	Name      string `mapstructure:"name" json:"name" yaml:"name"`
 	Namespace string `mapstructure:"namespace" json:"namespace" yaml:"namespace"`
-	ServerUrl string `mapstructure:"serverUrl" json:"serverUrl" yaml:"serverUrl"`
-	Config    string `mapstructure:"config" json:"config" yaml:"config"`
+	ServerName string `mapstructure:"serverName" json:"serverName" yaml:"serverName"` // Base64
+	ServerUrl string `mapstructure:"serverUrl" json:"serverUrl" yaml:"serverUrl"` // Base64
+	Config    string `mapstructure:"config" json:"config" yaml:"config"` // Base64
 }
 
 func CreateCluster(cluster Cluster, _ string, debug bool) error {
-	cluster.Namespace = argocdNamespace
+	if cluster.Namespace == "" {
+		cluster.Namespace = argocdNamespace
+	}
 	// Apply template
 	err := kubernetes.ApplyManifest(clusterTmpl, cluster, debug)
 	if err != nil {
@@ -34,8 +37,7 @@ metadata:
     argocd.argoproj.io/secret-type: cluster
 data:
   config: {{ .Config }}
-  name: {{ .Name }}
+  name: {{ .ServerName }}
   server: {{ .ServerUrl }}
 type: Opaque
-
 `
